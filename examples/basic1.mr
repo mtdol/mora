@@ -1,0 +1,25 @@
+-- simple version of the language
+-- only comments, function blocks, declarations, assignments, `+`, `-`, `*`
+-- print (@), and parenthesized expressions
+-- 
+-- no types except `Int`
+
+fn main ->
+    dec x
+    dec y
+
+    x <- 3
+    y <- x - 1
+
+    -- 2
+    @ y
+
+    -- 6
+    @ (1 + 2) * 3
+    -- 7
+    @ 1 + (2 * (3))
+    -- -5
+    @ (1 + ((0 - 2) * 3))
+
+    -- 5, an error code
+    return x + y

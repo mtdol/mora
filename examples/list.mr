@@ -1,0 +1,73 @@
+-- free types (`a` here) must be quantified on the left
+struct List a := 
+      List val :: a, next :: List 
+    | Null
+
+singleton :: a -> List a
+fn singleton x -> 
+    dec ret
+    ret         <- alloc List -- allocates a `List` struct on the heap
+    ret.val     <- x
+    ret.next    <- Null
+    return ret
+
+cons :: a -> List a -> List a
+fn cons x xs -> 
+    dec ret
+    ret         <- alloc List
+    ret.val     <- x
+    ret.next    <- xs
+    return ret
+
+-- defines `:` as the `cons` operator
+-- tokens like `:` are always infix ops
+fn : x xs -> return cons x xs
+
+-- deconstructor for `case` expressions
+-- `decons` is used similar to `fn` except for deconstructors
+-- all decons return a 2-tuple, or `Null` if the match failed
+decons : xs -> return 
+    | xs = Null -> Null
+    else xs.val, xs.next
+
+append :: List a -> List a -> List a
+fn append xs ys -> return
+    -- `,` is tuple constructor
+    -- `case` is an expression, `Case` is a statement
+    case xs, ys of
+        Null, ys -> 
+            ys
+        (x:xs), ys ->
+            cons x (xs `append` ys)
+
+head :: List a -> a
+fn head xs -> 
+    If xs = Null ->
+        error "Cannot head deref Null."
+    Else
+        return xs.val
+
+tail :: List a -> List a
+fn tail xs ->
+    If xs = Null ->
+        error "Cannot tail deref Null."
+    Else
+        return xs.next
+
+reverse :: List a -> List a
+fn reverse xs -> return
+    case xs
+        Null -> Null
+        x:xs -> (reverse xs) `append` (singleton x)
+
+map :: (a -> b) -> List a -> List b
+fn map f xs -> return
+    case xs
+        Null -> Null
+        x:xs -> f x : map f xs
+
+filter :: (a -> Bool) -> List a -> List a
+fn filter f xs -> return
+    case xs
+        Null -> Null
+        x:xs -> if f x -> x : filter f xs else filter f xs

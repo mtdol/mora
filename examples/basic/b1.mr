@@ -1,0 +1,10 @@
+-- very basic version of the language with explicit semicolons and brackets
+fn main -> {
+    dec x;
+    dec y;
+    x <- 3;
+    y <- x + 1; {- assigns 4 to y -}
+    @ y*2; -- prints 8
+
+    return 0;
+};

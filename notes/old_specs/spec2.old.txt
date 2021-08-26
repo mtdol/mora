@@ -1,0 +1,31 @@
+macro swap a b {
+    't := a
+    a := b
+    b := 't
+}
+
+def filter (f : 'a -> Bool) (a : array 'a) (len : int) -> (array 'a, int) {
+  dec (res : array 'a), (i : int), (j : int)
+
+  i := 0
+  j := 0
+  res := alloc (len * sizeof typeof a)
+  while i /= len {
+    If f a[i] = True {
+      res[j] = a[i]
+      j :+ 1
+    }
+
+    i :+ 1
+  }
+    
+  -- `res` is the array ptr, `j` is the num of valid elems in `res`
+  -- `len` is the actual length of the output array
+  return res, j, len
+}
+
+a = [1,2,3,4,5]
+let a, len, _ := filter (\x -> x % 2 = 1) a 5 {
+  @ a, len
+}
+

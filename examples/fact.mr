@@ -1,0 +1,12 @@
+fn fact n -> return
+    | n <= 1 -> 1
+    else n * fact (n-1)
+
+fn main ->
+    @ fact 1
+    @ fact 2
+    @ fact 3
+    @ fact 4
+    @ fact 5
+
+    return 0

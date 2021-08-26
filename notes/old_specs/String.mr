@@ -1,0 +1,16 @@
+-- type alias
+typedef String := Array Char
+
+main {
+    -- the argument vector passed to the main func
+    -- this typing is always true
+    args :: Array String
+
+    -- length, arg: 3, "abc"
+    -- length, arg: 1, "z"
+    for s in args {
+        @ "length, arg: " ++ (show (length s)) ++ ", " ++ s
+    }
+    
+    return 0
+}

@@ -1,0 +1,22 @@
+-- prints all odd squares from [0..n] where `n` is given by the user
+main :: Array String -> Int
+fn main args ->
+    dec square, odd, n, i
+    n :: Int
+
+    square <- (\x -> return x ^ 2) :: Int -> Int
+    odd <- (\x -> return x % 2 = 1) :: Int -> Bool
+   
+    -- `args` is the argument vector to `main`
+    If (args.length /= 1) ->
+        error "Please enter a single number >= 0."
+
+    -- n is already marked as `Int` so read will return an Int
+    n <- read $ args!0
+   
+    For (i in [0..n]) ->
+        let t <- square i ->
+            If odd t ->
+                @ t
+
+    return 0

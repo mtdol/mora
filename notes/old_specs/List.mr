@@ -1,0 +1,75 @@
+#lang mora
+
+--- macros
+
+-- easy access to the List constructor
+-- the `` in `:` means that the macro is infix
+#macro `:` a b
+Cons (a) (b)
+#end_macro
+
+-- sets the precedence of cons macro, 2 is low I guess
+#preced : 2
+
+-- `let` is used to introduce a scoped variable
+-- `let` can be used anywhere, the compiler will declare the variable
+--      on the stack if necessary
+#macro `swap` a b
+let t := (a) {
+    a := b
+    b := t
+}
+#end_macro
+
+--- type definitions
+
+-- the elements on the right are constructors for type `List a`
+type List a := 
+    Cons head :: a, tail :: List a |
+    Null
+
+
+--- utilities
+
+head vs :: List a -> a {
+    -- we have to declare every var we use in a case statement
+    dec v
+
+    case vs {
+       v : _  ->
+           return v
+       Null ->
+           error "head: tried to deref List"
+    }
+}
+
+tail vs :: List a -> List a {
+    case vs {
+        -- we don't have to declare `vs` since it is already declared
+        _ : vs ->
+            return vs
+        Null ->
+            error "tail: tried to deref List"
+    }
+}
+
+
+--- main
+
+main {
+    dec vs,s
+    
+    -- Cons 1 (Cons 2 (Cons 3 Null))
+    -- also `[1,2,3]` is shorthand understood by the parser
+    vs := 1 : 2 : 3 : Null
+    s := 0
+
+    -- sum up the elements in `vs`
+    while vs != Null {
+        s  :+ vs.val
+        vs := vs.next
+    }
+
+    -- should return 1 + 2 + 3
+    return s
+}

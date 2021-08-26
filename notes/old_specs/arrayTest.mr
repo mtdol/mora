@@ -1,0 +1,70 @@
+--- demonstation of array basics
+--
+
+#lang mora
+
+-- this type constructor is special and constructs an array on the heap
+-- we can reference the length component with the dot op as usual
+type Array a := Array length :: Int
+
+succ x :: Int -> Int {x + 1}
+pred x :: Int -> Int {x - 1}
+id v :: a -> a {v}
+
+-- arrays can't change types, so in place map will still produce an `Array a`
+mapInPlace f vs :: (a -> a) -> Array a -> Void {
+    dec i
+    
+    for i in [0..vs.length] {
+        vs[i] := f vs[i]
+    }
+
+    return Void
+}
+
+-- generates a new array
+map f vs :: (a -> b) -> Array a -> Array b {
+    dec i, ret
+
+    ret := Array vs.length
+    for i in [0..vs.length] {
+        ret[i] := f vs[i]
+    }
+
+    return ret
+}
+
+clone v :: Array a -> Array a {map id v}
+
+main {
+    dec a1, a2, i
+  
+    -- creates an array (perhaps with garbage values) of length 7
+    a1 := Array 7
+
+    -- zero out all elems in `a1`
+    for i in [0..6] {
+        a1[i] := 0
+    }
+   
+    -- a1[3] := 1
+    a1[3] := succ a1[3]
+
+    -- invalid typing
+    a1[2] := 'c'
+    
+    -- don't do this, runtime error
+    a1[7] := 0
+
+    -- application onto anonymous function, yields `-2`
+    -- and prints it (the `@` operator)
+    @ (\x y :: Int -> Int -> Int {x - y}) 3 5
+
+    -- increments all values in `a1`
+    mapInPlace succ a1
+
+    -- creates a new array, copies all of `a1`'s values over to it
+    a2 := clone a1
+
+    return 0
+}

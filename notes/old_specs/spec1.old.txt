@@ -1,0 +1,38 @@
+-- macro declaration
+macro swap a b {
+  -- `t` generates a fresh variable fresh in the macro context
+  let `t` := a {
+    a := b
+    b := `t`
+  }
+}
+
+def f (int x) (int y) -> ref int {
+  -- var declarations
+  dec (ref int) ptr
+
+  -- if statement (`if` is an expression, `If` is a statement)
+  If x = 3 {
+    -- heap allocation
+    ptr := alloc sizeof int
+    -- deref `ptr` and assign `y` to it
+    drf ptr := y
+  } 
+
+  -- implicit `return` statement
+  ptr
+}
+
+def reverse (array a) -> Void {
+  -- local var
+  let n := length a {
+    for i in [0..a.length//2] {
+      -- call the swap macro, use as infix, cuz why not
+      a[n-1-i] `swap` a[i] 
+    }
+  }
+  return Void
+}
+
+-- prints [2, 3, 4]
+@ map (\n -> n + 1) [1,2,3]

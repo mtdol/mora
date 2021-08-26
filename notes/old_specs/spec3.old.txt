@@ -1,0 +1,137 @@
+#lang langname_here
+
+--- List
+-- Matthew Dolinka
+
+-- Macros
+--
+
+-- infix (`` means infix) cons operator
+#macro `,` v vs
+List (v) (vs)
+#end_macro
+
+-- `1,2,()` = `List 1 (List 2 (List))`
+-- `""` are necessary since `()` is a token sequence
+#macro "()"
+(List)
+#end_macro
+
+#preced , 1
+
+#macro head vs
+vs.val
+#end_macro
+
+-- presume that `9` is the tightest precedence
+#preced head 9
+
+
+-- List constructors
+--
+
+-- you can't have free polymetric types floating around in the struct
+-- definition, they have to be introduced after `struct List` and before
+-- the `{`
+--
+-- this means that when a `List` is allocated  you have to allocate it as
+-- a `List int` or `List char` rather than just `List` or `List 'a`
+struct List 'a {
+    length : int
+    val : 'a
+    next : List 'a
+}
+
+-- list constructor (no args)
+List -> List 'a {
+    -- allocates a pointer on the stack
+    dec lst : List 'a
+
+    -- creates a List on the heap
+    -- since there is garbage collection, the List need not be freed
+    lst := alloc List Void
+    lst.length := 0
+    lst.val := Void
+    lst.next := Null
+    
+    -- implicit return
+    lst
+}
+
+-- pair case of List constructor
+List (v : 'a) (vs : List 'a) -> List 'a {
+    -- typing for declarations can be implied
+    dec lst
+  
+    lst := alloc List 'a
+    lst.length := vs.length + 1
+    lst.val := v
+    lst.next := vs
+
+    lst
+}
+
+
+map (f : 'a -> 'b) (vs : List 'a) -> List 'b {
+    case vs of
+    | v, vs -> {
+        return f v, map f vs
+    }
+    | List -> {
+        -- this is calling the empty constructor and returning the object
+        return List
+    }
+}
+
+map_in_place (f : 'a -> 'b) (vs : List 'a) -> Void {
+    -- conditional expression
+    | vs = List -> {Void}
+    else {
+        vs.val := f vs.val
+        map_in_place f vs.next
+    }
+}
+
+filter (f : 'a -> bool) (vs : List 'a) -> List 'a {
+    dec v, vs
+
+    -- variables in case statements are allocated and freed
+    -- behind the scenes
+    case vs of
+    -- `,` references the `List v vs` constructor above for deconstruction
+    --
+    -- the macro `,` with its args unpacs to
+    -- `List (v) (vs)`
+    | v, vs when f v -> {
+        return v (filter f vs)
+    }
+    | _, vs -> {
+        return filter f vs
+    }
+    | List -> {
+        return List
+    }
+}
+
+
+-- the `-> int` specifies the return type as int and can be implied
+main -> int {
+    -- declarations are mandatory at the top of the code block
+    -- but the types can be implied
+    dec vs : List int, sub : int -> int -> int
+
+    vs := 1, 2, 3
+    -- prints `1`
+    @ head vs
+    
+    -- anonymous function
+    -- the return of the lambda can be typed with `-> type`
+    sub := (\x, y -> x - y) -> int
+    -- prints 1
+    @ sub 2 1 
+    -- infix usage of sub (prints 1 as well)
+    @ 2 `sub` 1
+
+    -- explicit return
+    return 0
+}

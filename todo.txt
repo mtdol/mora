@@ -1,0 +1,20 @@
+- figure out how to use haskell sufficiently
+    - figure out how to use the haskell lexer and parser
+
+- think about the type system
+    - study Hindley-Milner algorithm and how it can relate
+        to an imperative language
+    - think about the current ideas for the type system and
+        try to come up with counter examples.
+
+- find a suitable IR for the language
+    - C-- ?
+    - llvm ?
+    - C ?
+    - x86 ?
+
+- how will the macro system work?
+    - pre-processor directives similar to C
+    - macros should look like functions and operators and
+        should be handled post-parse
+    - mixed sterile and non-sterile macros

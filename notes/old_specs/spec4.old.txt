@@ -1,0 +1,41 @@
+#lang c2
+
+struct String {
+    chars : array char
+    length : int
+}
+
+String {
+    dec s
+
+    s := alloc String
+    s.length := 0
+    s.chars := alloc array char
+
+    return s
+}
+
+String (cs : array char) {
+    dec i, s
+    
+    s := String
+
+    for i in [0..cs.length] {
+        s.chars[i] := cs[i]
+    }
+    s.length := cs.length
+
+    return s
+}
+
+-- string specific `free` function
+free (s : String) -> Void {
+    free s.chars
+    -- general free function
+    free_ s
+    return Void
+}
+
+equal? (s1 : string) (s2 : string) -> bool {
+    return s1.chars = s2.chars
+}

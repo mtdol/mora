@@ -1,0 +1,29 @@
+type String := Array Char   -- type alias
+
+fn main args ->
+    dec f :: File, s :: String
+
+    If (args.length /= 1) ->
+        error "Please enter a single file-name."
+    
+    f <- getf (args!0)  -- file handler
+    s <- readf f        -- read the contents of `f` into `s`
+
+    toUpper s
+
+    writef f s          -- writes the string in `s` to the file `f`
+
+    return 0
+
+toUpper :: String -> Void
+fn toUpper s ->
+    dec i
+    i <- 0
+    
+    While (i /= s.length) ->
+        If inRange 97 122 (s!i) ->
+            s!i -> s!i - 32
+        i +< 1
+
+inRange :: Int -> Int -> Int
+fn inRange r1 r2 x -> return x >= r1 and x < r2
