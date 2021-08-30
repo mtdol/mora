@@ -4,22 +4,23 @@
 -- 
 -- no types except `Int`
 
-fn main ->
-    dec x
-    dec y
+fn main {
+    dec x;
+    dec y;
 
-    x <- 3
-    y <- x - 1
+    x <- 3;
+    y <- x - 1;
 
     -- 2
-    @ y
+    @ y;
 
     -- 6
-    @ (1 + 2) * 3
+    @ (1 + 2) * 3;
     -- 7
-    @ 1 + (2 * (3))
+    @ 1 + (2 * (3));
     -- -5
-    @ (1 + ((0 - 2) * 3))
+    @ (1 + ((0 - 2) * 3));
 
     -- 5, an error code
-    return x + y
+    return x + y;
+}

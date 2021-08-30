@@ -1,38 +1,46 @@
-map :: (a -> b) -> Array a -> Void
-fn map f a ->
-    dec i
-    i <- 0
+map :: (a -> b) -> Array a -> Void;
+fn map f a {
+    dec i;
+    i <- 0;
 
-    While (i /= a.length) ->
-        a!i <- f (a!i)
-        i   +< 1
+    While (i /= a.length) {
+        a!i <- f (a!i);
+        i   +< 1;
+    }
+}
 
-append :: Array a -> Array a -> Array a
-fn append a1 a2 ->
-    dec ret
-    ret <- array (a1.length + a2.length)
+append :: Array a -> Array a -> Array a;
+fn append a1 a2 {
+    dec ret;
+    ret <- Array (a1.length + a2.length);
 
-    While (i /= a1.length) ->
-        ret!i <- a1!i
-        i     +< 1
+    While (i /= a1.length) {
+        ret!i <- a1!i;
+        i     +< 1;
+    }
 
-    While (i /= ret.length) ->
-        ret!i <- a2!(i-a1.length)
-        i     +< 1
+    While (i /= ret.length) {
+        ret!i <- a2!(i-a1.length);
+        i     +< 1;
+    }
 
-    return ret
+    return ret;
+}
 
-filter :: (a -> Bool) -> Array a -> Array a
-fn filter f a ->
-    dec ret, i, reti
-    ret     <- array a.length
-    i       <- 0
-    reti    <- 0
+filter :: (a -> Bool) -> Array a -> Array a;
+fn filter f a {
+    dec ret, i, reti;
+    ret     <- Array a.length;
+    i       <- 0;
+    reti    <- 0;
 
-    While (i /= a.length) ->
-        If f $ a!i -> 
-            ret!reti <- a!i
-            reti     +< 1
-        i +< 1
+    While (i /= a.length) {
+        If (f $ a!i) {
+            ret!reti <- a!i;
+            reti     +< 1;
+        }
+        i +< 1;
+    }
 
-    return ret
+    return ret;
+}

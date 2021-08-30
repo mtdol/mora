@@ -1,20 +1,42 @@
-- figure out how to use haskell sufficiently
-    - figure out how to use the haskell lexer and parser
+- should I allow variable shadowing?
+```
+dec a;
+a <- 3;
+{dec a; a <- 2;}
+-- prints 3
+@a;
+```
 
-- think about the type system
-    - study Hindley-Milner algorithm and how it can relate
-        to an imperative language
-    - think about the current ideas for the type system and
-        try to come up with counter examples.
+- variable declaration scope
+```
+{dec a; a <- 3; @a {-okay-}}
+-- illegal
+@a;
+```
+perhaps use static var renaming for this
 
-- find a suitable IR for the language
-    - C-- ?
-    - llvm ?
-    - C ?
-    - x86 ?
 
-- how will the macro system work?
-    - pre-processor directives similar to C
-    - macros should look like functions and operators and
-        should be handled post-parse
-    - mixed sterile and non-sterile macros
+- allow sub-procedures
+```
+fn f x {
+    fn g y {
+        ...
+    ...
+    }
+}
+```
+perhaps lift the sub-procs to the global space (to allow recursion)
+    and then do static variable renaming
+
+- algebraic data types
+
+- case expr/statements 
+
+
+- allow file manipulation, probably with file handles
+
+
+- what should we do about in-place modifications of structures in regards to
+    the type system.
+If I have an `Array Int` `a`, I should not (presumably) be able to go
+`a ! 2 <- 'c'`, since that would make it a mixed `Int` `Char` array.

@@ -1,32 +1,37 @@
-interlace :: Array a -> Array a -> Array a
-fn interlace a1 a2 ->
-    dec i, ret, reti
-    i       <- 0
-    reti    <- 0
-    ret     <- array (a1.length + a2.length)
+interlace :: Array a -> Array a -> Array a;
+fn interlace a1 a2 {
+    dec i, ret, reti;
+    i       <- 0;
+    reti    <- 0;
+    ret     <- Array (a1.length + a2.length);
 
-    While (i /= a1.length and i /= a2.length) ->
-        ret!reti, ret!reti+1 <- a1!i, a2!i
-        reti                 +< 2
-        i                    +< 1
+    While (i /= a1.length and i /= a2.length) {
+        ret!reti, ret!reti+1 <- a1!i, a2!i;
+        reti                 +< 2;
+        i                    +< 1;
+    }
 
-    If (i = a1.length) ->
-        While i /= a2.length ->
-            ret!reti <- a2!i
-            reti     +< 1
-            i        +< 1
-    Else
-        While i /= a1.length ->
-            ret!reti <- a1!i
-            reti     +< 1
-            i        +< 1
+    If (i = a1.length) {
+        While (i /= a2.length) {
+            ret!reti <- a2!i;
+            reti     +< 1;
+            i        +< 1;
+        }
+    } Else {
+        While (i /= a1.length) {
+            ret!reti <- a1!i;
+            reti     +< 1;
+            i        +< 1;
+        }
+    }
 
-    return ret
-        
+    return ret;
+} 
 
-fn main ->
-    @ interlace [1,2,3] [4,5,6] -- [1,4,2,5,3,6]
-    @ interlace [1,2]   [4,5,6] -- [1,4,2,5,6]
-    @ interlace [1,2,3] [4,5]   -- [1,4,2,5,3]
+fn main {
+    @ interlace [1;2;3] [4;5;6]; -- [1;4;2;5;3;6]
+    @ interlace [1;2]   [4;5;6]; -- [1;4;2;5;6]
+    @ interlace [1;2;3] [4;5];   -- [1;4;2;5;3]
 
-    return 0
+    return 0;
+}

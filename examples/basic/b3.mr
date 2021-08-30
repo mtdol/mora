@@ -1,0 +1,17 @@
+fn printArgs {
+    dec i;
+    i <- 0;
+
+    While (i /= argsG.length) {
+        @ argsG ! i;
+        i +< 1;
+    }
+}
+
+dec argsG;
+
+fn main args {
+    argsG <- args;
+    printArgs();
+    return 0;
+}

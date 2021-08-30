@@ -1,19 +1,20 @@
-fn f x y -> {
+fn f x y {
     dec z;
+    z <- 0;
     
-    If (y < 0) -> {
+    If (y < 0) {
         y <- 0;
-    };
+    }
 
-    While (y /= 0) -> {
+    While (y /= 0) {
         z +< x;
         y -< 1;
-    };
+    }
 
     return z;
-};
+}
 
-fn main -> {
+fn main {
     dec z1, z2;
     z1 <- f 3 4;
     @ z1;
@@ -21,4 +22,4 @@ fn main -> {
     @ z2;
 
     return 0;
-};
+}

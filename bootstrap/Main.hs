@@ -2,9 +2,10 @@ module Main where
 
 import System.Environment
 import System.IO
+import qualified Data.Array as Array
 
 import Parse
-import WellFormed
+--import WellFormed
 import Interp
 
 main :: IO ()
@@ -13,48 +14,48 @@ main = do
     p args
 
 p ("-e":arg:[]) = 
-    run arg
-p (file:[]) = do
+    run True arg []
+p (file:args) = do
     h <- openFile file ReadMode
     c <- hGetContents h
-    run c
+    run False c args
 p _ = print "Invalid Args."
 
-run :: String -> IO ()
-run text = 
+run :: Bool -> String -> [String] -> IO ()
+run im text args = 
     let p = readProg text in
-        if wellFormed p then
-            runIter p emptyContext
+        if True {-TODO: make this a wellness check-} then
+            -- interactive mode
+            if im then
+                let (vs,m) = interpInteractive p
+                in printValues vs m
+            -- file mode
+            else 
+                let (ret,vs,m) = interp p args 
+                in printValues vs m >> 
+                    if ret /= (VInt 0) then 
+                        error "Non-zero exit status." 
+                    else return ()
         else
             error "Malformed."
 
 -- only parses
-run' :: String -> IO ()
-run' text = print $ readProg text
+run' :: Bool -> String -> [String] ->IO ()
+run' _ text _ = print $ readProg text
 
--- iterates over the statments, runs them in order, and prints anything
--- that needs to be printed
-runIter :: Seq -> Context -> IO ()
-runIter ss c = 
-    let (vs, c') = interp ss c in
-        printValues vs
+printValues :: [Value] -> State -> IO ()
+printValues (v:vs) m = case v of
+    VIO v -> printValue v m >> printValues vs m
+    _ -> printValues vs m
+printValues ([]) _ = return ()
 
-printValues :: [Value] -> IO ()
-printValues (v:vs) = case v of
-    VIO v -> printValue v >> printValues vs
-    _ -> printValues vs
-printValues ([]) = return ()
+printValue :: Value -> State -> IO ()
+printValue v m = case v of
+    VChar c      -> putChar c
+    vptr@(VPtr _) -> printValue (getFromHeap vptr m) m
+    VArray a _   -> printArray a m
 
-printValue :: Value -> IO ()
-printValue v = case v of
-    VInt i      -> putStr $ show i
-    VBool b     -> putStr $ show b
-    VString s   -> putStr $ s
-    VChar c     -> putChar $ c
-    VFloat f    -> putStr $ show f
-    VTup v1 v2  -> 
-        putStr "(" 
-            >> printValue v1 
-            >> putStr ", " 
-            >> printValue v2
-            >> putStr ")"
+printArray :: Array.Array Integer Value -> State -> IO ()
+printArray a m = let (_,n) = Array.bounds a in aux a m (n+1) 0 where
+    aux a m n i | i == n = return ()
+    aux a m n i = printValue (a Array.! i) m >> aux a m n (i+1)

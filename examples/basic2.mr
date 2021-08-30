@@ -1,52 +1,57 @@
 #include <list>
 
-fn zip xs ys ->
+fn zip xs ys {return
     -- `,` is tuple,
     -- `case` is an expr
-    return case xs, ys of
-        Null, _ -> Null
-        _, Null -> Null
+    case xs, ys {
+        Null, _ -> Null;
+        _, Null -> Null;
 
         -- variables in `case` patterns do not need to be declared with `dec`
         (x:xs), (y:ys) -> 
-            (x,y) : zip xs ys
+            (x,y) : zip xs ys;
+    }
+;}
 
-fn main ->
-    dec xs, ys, zs
+fn main {
+    dec xs, ys, zs;
     
-    xs <- 1:2:3:Null
-    ys <- 'a':'b':'c':'d':Null
+    xs <- 1:2:3:Null;
+    ys <- 'a':'b':'c':'d':Null;
     
-    zs <- zip xs ys
+    zs <- zip xs ys;
     
     -- `if` is an expr
-    @ if (head zs = (1,'a')) -> "its a (1, 'a')" else "nope"
+    @ if head zs = (1,'a') then "its a (1, 'a')" else "nope";
 
     -- `If` is a statement
-    If (head (tail zs) = (1, 'b')) ->
+    If (head (tail zs) = (1, 'b')) {
         @ "I hate this! I'm leaving!"
         return 1
-    Else
-        @ "Wrong"
+    } Else {@ "Wrong";}
 
     -- cond statement
-    |> (length zs = 2) ->
-        @ "its ..."
-        @ "2"
-    |> (length zs = 3) ->
-        @ "no its ..."
-        @ "3"
-    Else
-        @ "ahh ..."
-        @ "its 4"
+    |> (length zs = 2) {
+        @ "its ...";
+        @ "2";
+    }
+    |> (length zs = 3) {
+        @ "no its ...";
+        @ "3";
+    }
+    Else {
+        @ "ahh ...";
+        @ "its 4";
+    }
 
     -- clearing variables for the garbage constructor
     -- (this is not required, just an example)
-    del xs
-    del ys
-    del zs
+    del xs;
+    del ys;
+    del zs;
 
     -- this would be illegal now:
-    --@ xs
+    --@ xs;
 
-    return 0
+    return 0;
+}

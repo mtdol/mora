@@ -1,0 +1,32 @@
+fn sub x y {return x - y;}
+
+fn map f xs {
+    dec i;
+    i <- 0;
+
+    While (i /= xs.length) {
+        xs ! i <- f (xs ! i);
+        i +< 1;
+    }
+}
+
+fn main {
+    dec add1, vs;
+    add1 <- \x {return x + 1;};
+    
+    @ 5 `sub` 3;
+    @ add1 6;
+
+    vs <- [1;2;3];
+    @ vs;
+
+    -- map in place using lambda
+    map add1 vs;
+    @ vs;
+    
+    -- a little currying
+    map (sub 2) vs;
+    @vs;
+
+    return 0;
+}
