@@ -242,7 +242,7 @@ lhsExpr = expr --buildExpressionParser lhsOperators lhsTerm
 
 readProg :: String -> Seq
 readProg input = case parse beginParse "" input of
-    Left err -> error $ show err
+    Left err  -> error $ show err
     Right val -> val
 
 beginParse = do 

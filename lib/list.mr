@@ -1,0 +1,6 @@
+-- causes an import cycle
+-- #include <std.mr>
+
+-- dunno just a placeholder
+dec list;
+list <- True;

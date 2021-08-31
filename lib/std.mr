@@ -1,3 +1,5 @@
+#include <list.mr>
+
 {-
 --Yet to implement
 data Maybe a    := Yes a  | No;
@@ -5,6 +7,20 @@ data Either a b := Left a | Right b;
 
 -}
 
+op @ v {
+    dec s,i;
+    i <- 0;
+    s <- show v;
+
+    While (i /= s.length) {
+        printChar $ s ! i;
+        i +< 1;
+    }
+
+    printChar '\n';
+}
+
+op ++ a b {return a `append` b;}
 
 -- id :: a -> a;
 fn id a {return a;}
@@ -75,36 +91,4 @@ fn filter f a {
     While (j /= reti) {ret2 ! j <- ret ! j; j +< 1;}
 
     return ret2;
-}
-
-op @ v {
-    dec s,i;
-    i <- 0;
-    s <- show v;
-
-    While (i /= s.length) {
-        printChar $ s ! i;
-        i +< 1;
-    }
-
-    printChar '\n';
-}
-
-op ++ a b {return a `append` b;}
-
-fn main {
-    dec a;
-    a <- [1,2,3];
-    \ x {return x - 1;} `map` a;
-    @ a ++ [4,5];
-    @ \ x {return x+1;} `gmap` [4,5];
-    @ \ x {return x % 2 = 0;} `filter` [1,2,3,4,5];
-    
-    dec b;
-    b <- id `gmap` a; -- clone the array
-    a ! 0 <- 9;
-    @a;
-    @b;
-    
-    return 0;
 }

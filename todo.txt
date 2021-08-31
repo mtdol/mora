@@ -28,6 +28,7 @@ fn f x {
 perhaps lift the sub-procs to the global space (to allow recursion)
     and then do static variable renaming
 
+
 - algebraic data types
 
 - case expr/statements 
@@ -40,3 +41,9 @@ perhaps lift the sub-procs to the global space (to allow recursion)
     the type system.
 If I have an `Array Int` `a`, I should not (presumably) be able to go
 `a ! 2 <- 'c'`, since that would make it a mixed `Int` `Char` array.
+
+
+- allow absolute imports
+```
+#include '/home/f/a.mr'
+```

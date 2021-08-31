@@ -5,43 +5,50 @@ import System.IO
 import qualified Data.Array as Array
 
 import Parse
+import Preprocessor
 --import WellFormed
 import Interp
 
 main :: IO ()
 main = do 
     args <- getArgs
-    p args
+    handleArgs args
 
-p ("-e":arg:[]) = 
-    run True arg []
-p (file:args) = do
+stdModuleImport = "#include <std.mr>"
+
+handleArgs :: [String] -> IO ()
+handleArgs ("-e":arg:[]) = 
+    run True arg "" []
+handleArgs (file:args) = do
     h <- openFile file ReadMode
     c <- hGetContents h
-    run False c args
-p _ = print "Invalid Args."
+    --hClose h
+    run False c file args
+handleArgs _ = print "Invalid Args."
 
-run :: Bool -> String -> [String] -> IO ()
-run im text args = 
-    let p = readProg text in
-        if True {-TODO: make this a wellness check-} then
-            -- interactive mode
-            if im then
-                let (vs,m) = interpInteractive p
-                in printValues vs m
-            -- file mode
-            else 
-                let (ret,vs,m) = interp p args 
-                in printValues vs m >> 
-                    if ret /= (VInt 0) then 
-                        error "Non-zero exit status." 
-                    else return ()
-        else
-            error "Malformed."
+--     interactive mode?    file text   file name   args 
+run :: Bool ->              String ->   String ->   [String] -> IO ()
+run im text cf args = do
+    -- standard module
+    let text' = stdModuleImport ++ "\n" ++ text
+    text'' <- process text' 0 cf
+    let p = readProg text''
+    let p' = if True then p else error "Malformed."
+   
+    if im then
+        let (os,m) = interpInteractive p'
+        in printValues os m
+    -- file mode
+    else 
+        let (ret,os,m) = interp p' args 
+        in printValues os m >> 
+            if ret /= (VInt 0) then 
+                error "Non-zero exit status." 
+            else return ()
 
 -- only parses
-run' :: Bool -> String -> [String] ->IO ()
-run' _ text _ = print $ readProg text
+run' :: Bool -> String -> String -> [String] -> IO ()
+run' _ text _ _ = print $ readProg text
 
 printValues :: [IO Value] -> State -> IO ()
 printValues (v:vs) m = do
