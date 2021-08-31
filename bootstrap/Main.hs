@@ -43,10 +43,11 @@ run im text args =
 run' :: Bool -> String -> [String] ->IO ()
 run' _ text _ = print $ readProg text
 
-printValues :: [Value] -> State -> IO ()
-printValues (v:vs) m = case v of
-    VIO v -> printValue v m >> printValues vs m
-    _ -> printValues vs m
+printValues :: [IO Value] -> State -> IO ()
+printValues (v:vs) m = do
+    v' <- v
+    printValue v' m
+    printValues vs m
 printValues ([]) _ = return ()
 
 printValue :: Value -> State -> IO ()

@@ -9,16 +9,16 @@ data Value =
     | VChar {vgetChar :: Char} 
     | VFloat {vgetFloat :: Double} 
     | VBool {vgetBool :: Bool}
-    | VTup {vgetFirst :: Value, vgetSecond :: Value}
+    | VTuple2 {v2get1 :: Value, v2get2 :: Value}
+    | VTuple3 {v3get1 :: Value, v3get2 :: Value, v3get3 :: Value}
     | VArray {vgetArray :: Array.Array Integer Value, vgetArrayLength :: Integer}
     | VPtr Ptr
     --      label        params  args   body
     | VFn (Maybe Label) [Label] [Expr] Seq
-    | VIO {getIO :: Value}
     | VVoid
     deriving (Eq, Show, Ord)
 
-interpTo :: (Value -> a) -> Expr -> State -> (a, [Value], State)
+interpTo :: (Value -> a) -> Expr -> State -> (a, [IO Value], State)
 interpTo get x m =
     let (v,vs,m') = interpX x m in
         (get v,vs,m')
@@ -119,7 +119,9 @@ getFromState :: Label -> State -> Value
 getFromState id (c,g,_)
     | id `Map.member` c = 
         let v = c Map.! id in case v of
-            VVoid -> error $ "Var not defined: " ++ id
+            -- if var is declared but not defined, 
+            --  check for a global def anyway
+            VVoid -> getFromContext id g
             v     -> v
     | id `Map.member` g = 
         let v = g Map.! id in case v of
@@ -148,14 +150,22 @@ listToArray es =
         es' = zip es [0..n-1]
     in Array.array (0,n-1) [(i,e) | (e,i) <- es']
 
---                           return status  value stream   memory
-interp :: Seq -> [String] -> (Value,        [Value],       State)
+
+--             array                        length     
+arrayToList :: Array.Array Integer Value -> Integer -> [Value]
+arrayToList a n = aux a n 0 where 
+aux a n i | i == n = []
+aux a n i = a Array.! i : aux a n (i+1)
+    
+
+--                           return status  io stream    memory
+interp :: Seq -> [String] -> (Value,        [IO Value],  State)
 interp ss args = 
     let m = emptyState
         -- now gather function and type definitions from the top-level
-        m' = interpDefs ss m
+        (ss',m') = interpDefs ss m
         -- now exec global variables
-        (vs, (c'',g'',h'')) = interpGlobals ss m'
+        (vs, (c'',g'',h'')) = interpGlobals ss' m'
         -- find the main function
         vfn@(VFn _ _ _ _) = getFromContext "main" g''
         -- convert args into an in-language array
@@ -179,23 +189,31 @@ interp ss args =
                    ([],m) ss
 
 -- doesn't look for a main function
-interpInteractive :: Seq -> ([Value], State)
+interpInteractive :: Seq -> ([IO Value], State)
 interpInteractive ss =
-    let m' = interpDefs ss emptyState
-        (vs, m'') = interpGlobals ss m'
+    let (ss',m') = interpDefs ss emptyState
+        (vs, m'') = interpGlobals ss' m'
     in (vs, m'')
 
-interpDefs :: Seq -> State -> State
-interpDefs (Seq []) m   = m
+-- grabs all function, type, and op definitions from the top level
+--  maps them into the global context and removes them from the program
+interpDefs :: Seq -> State -> (Program, State)
+interpDefs (Seq []) m   = (Seq [], m)
 interpDefs (Seq (s:ss)) m = case s of
     Fn fl fps fb -> 
         let vf = VFn (Just fl) fps [] fb
             m' = mapToGlobalContext fl vf m
         in interpDefs (Seq ss) m'
-    _ -> interpDefs (Seq ss) m
+    Op op ps b -> 
+        let vf = VFn (Just op) ps [] b
+            m' = mapToGlobalContext op vf m
+        in interpDefs (Seq ss) m'
+    _ -> aux s $ interpDefs (Seq ss) m 
+ where
+    aux s (Seq ss,m) = (Seq (s:ss), m)
         
 
-interpGlobals :: Seq -> State -> ([Value], State)
+interpGlobals :: Seq -> State -> ([IO Value], State)
 interpGlobals (Seq []) m = ([], m)
 interpGlobals (Seq ((Dec x):ss)) (c,g,h) =
     let g' = aux x g 
@@ -211,8 +229,8 @@ interpGlobals (Seq (s:ss)) m = case s of
              (vs',m'') = interpGlobals (Seq ss) m'
          in (vs++vs',m'')
         
---                           return value    value stream   memory
-interpSeq :: Seq -> State -> (Maybe Value,   [Value],       State)
+--                           return value    io stream      memory
+interpSeq :: Seq -> State -> (Maybe Value,   [IO Value],    State)
 interpSeq (Seq []) m       = (Nothing,[],m)
 interpSeq (Seq ((Return x):ss)) m = 
     let (v,vs,m') = interpX x m
@@ -226,10 +244,10 @@ interpSeq (Seq (s:ss)) m   =
         -- return value, so stop executing
         r@(Just v, _, _) -> r
 
-interpS :: Stmt -> State -> (Maybe Value, [Value], State)
+interpS :: Stmt -> State -> (Maybe Value, [IO Value], State)
 interpS (Stmt x) m = 
-    let (v,vs,m') = interpX x m in
-        (Nothing,vs++[v],m')
+    let (_,vs,m') = interpX x m in
+        (Nothing,vs,m')
 interpS (Block ss) m = interpSeq ss m
 interpS (NOP) m    = (Nothing,[],m)
 -- maps each var into the context with a meaningless `VVoid` value
@@ -244,7 +262,7 @@ interpS (Assign (Var id) x) m =
     let (v,vs,m') = interpX x m
         m'' = mapToState id v m'
         in
-            (Nothing,vs++[v], m'')
+            (Nothing,vs, m'')
 
 interpS (Assign (Op2 "!" lx1 lx2) rx) m =
     let (v,vs,m')     = interpX rx m
@@ -257,10 +275,12 @@ interpS (Assign (Op2 "!" lx1 lx2) rx) m =
                     m''''   = mapToHeap vptr a' m'''
                 in (Nothing,vs++vs'++vs'',m'''')
             _ -> error "Tried to assign to non-array"
-        
+       
+-- local function definition
 interpS (Fn fl fps fb) m = 
     let m' = mapToLocalContext fl (VFn (Just fl) fps [] fb) m
     in (Nothing,[],m')
+interpS (Op _ _ _) m = error "Op definitions only allowed in top-level."
 interpS (If x ss1 ss2) m = 
     let (b,vs,m'@(c',_,_)) = interpToBool x m
     in
@@ -283,12 +303,12 @@ interpS (While x ss) m =
                     (v,vs++vs'++vs'',m''')
 
 interpOp2 :: 
-       (Expr -> State -> (a, [Value], State)) 
-    -> (Expr -> State -> (b, [Value], State))
+       (Expr -> State -> (a, [IO Value], State)) 
+    -> (Expr -> State -> (b, [IO Value], State))
     -> (a -> b -> c)
     -> (c -> Value)
     -> Expr -> Expr -> State
-    -> (Value, [Value], State)
+    -> (Value, [IO Value], State)
 interpOp2 f1 f2 op t x1 x2 m = 
     let (v1,vs,m')     = f1 x1 m
         (v2,vs',m'')   = f2 x2 m'
@@ -299,7 +319,7 @@ interpOp2Generic ::
        (Value -> Value -> a)
     -> (a -> Value)
     -> Expr -> Expr -> State
-    -> (Value, [Value], State)
+    -> (Value, [IO Value], State)
 interpOp2Generic op t x1 x2 m = 
     let f             = interpX
         (v1,vs,m')    = f x1 m
@@ -308,17 +328,17 @@ interpOp2Generic op t x1 x2 m =
             (t (v1 `op` v2),vs++vs',m'')
 
 interpOp1 :: 
-       (Expr -> State -> (a,[Value],State)) 
+       (Expr -> State -> (a,[IO Value],State)) 
     -> (a -> b)
     -> (b -> Value)
     -> Expr -> State
-    -> (Value, [Value], State)
+    -> (Value, [IO Value], State)
 interpOp1 f op t x m = 
     let (v,vs,m')    = f x m in
         (t (op v),vs,m')
 
---                                results   value stream  memory
-interpXs :: [Expr] -> State -> ([Value], [Value],      State)
+--                              results  io stream    memory
+interpXs :: [Expr] -> State -> ([Value], [IO Value],  State)
 interpXs xs m =
     foldr (\x (rs,vs,m) -> 
                 let (r,vs',m') = interpX x m 
@@ -327,7 +347,7 @@ interpXs xs m =
 
 -- loads args into fresh local context and runs the expression
 -- Note: the fargs `fas` should be in reverse order relative to the fparams `fps`
-interpRunFn :: Seq -> [Label] -> [Expr] -> State -> (Value,[Value],State)
+interpRunFn :: Seq -> [Label] -> [Expr] -> State -> (Value,[IO Value],State)
 interpRunFn fb fps fas m =
         -- exec the args
     let (fas',vs,(c',g',h')) = interpXs fas m
@@ -354,8 +374,8 @@ interpRunFn fb fps fas m =
 -- The value stream is all of the values that have been accumulated from
 --  function calls.
 --
---                          value   value stream   memory
-interpX :: Expr -> State -> (Value, [Value],       State)
+--                          value   io stream    memory
+interpX :: Expr -> State -> (Value, [IO Value],  State)
 interpX (PBool b) m     = (VBool $ b,[],m)
 interpX (PInt i) m      = (VInt $ i,[],m)
 interpX (PChar c) m     = (VChar $ c,[],m)
@@ -373,6 +393,16 @@ interpX (PString s) m = let
     rs = map VChar s
     (vptr,m') = allocateArray rs m
     in (vptr,[],m')
+
+interpX (PTuple xs) m = let
+    (vs,ios,m') = interpXs xs m
+    v = case vs of
+        [v1,v2] -> 
+            VTuple2 v1 v2
+        [v1,v2,v3] -> 
+            VTuple3 v1 v2 v3
+        _ -> error "Cannot construct more than 3-tuple."
+    in (v,ios,m')
 
 interpX (Lambda lps lb) m = (VFn Nothing lps [] lb,[],m)
 
@@ -394,6 +424,13 @@ interpX (Op2 "/" x1 x2) m =
     in (VInt $ floor $ (fromIntegral v1) / (fromIntegral v2),vs++vs',m'')
 interpX (Op2 "/." x1 x2) m =
     interpOp2 interpToFloat interpToFloat (/) VFloat x1 x2 m
+interpX (Op2 "^" x1 x2) m =
+    interpOp2 interpToInt interpToInt (^) VInt x1 x2 m
+interpX (Op2 "^." x1 x2) m =
+    interpOp2 interpToFloat interpToFloat (**) VFloat x1 x2 m
+
+interpX (Op2 "%" x1 x2) m =
+    interpOp2 interpToInt interpToInt (mod) VInt x1 x2 m
 
 interpX (Op2 "=" x1 x2) m =
     interpOp2Generic (==) VBool x1 x2 m
@@ -416,31 +453,45 @@ interpX (Op2 "or" x1 x2) m =
 interpX (Op2 "xor" x1 x2) m =
     interpOp2 interpToBool interpToBool (\x y -> x `xor` y) VBool x1 x2 m
 
-interpX (Op2 "," x1 x2) m =
-    let (v1,vs,m')    = interpX x1 m
-        (v2,vs',m'')   = interpX x2 m'
-        in (VTup v1 v2,vs++vs',m'')
+-- interpX (Op2 "," x1 x2) m =
+--     let (v1,vs,m')    = interpX x1 m
+--         (v2,vs',m'')   = interpX x2 m'
+--         in (VTup v1 v2,vs++vs',m'')
 
-interpX (Op1 "fst" x) m =
-    let (v,vs,m') = interpX x m in
-    (vgetFirst v,vs,m')
-interpX (Op1 "snd" x) m =
-    let (v,vs,m') = interpX x m in
-    (vgetSecond v,vs,m')
+interpX (Ap (Var "fst") x) m = let
+    (v,ios,m') = interpX x m 
+    v' = case v of
+        VTuple2 v1 v2 -> v1
+        VTuple3 v1 v2 v3 -> v1
+    in (v',ios,m')
+interpX (Ap (Var "snd") x) m = let
+    (v,ios,m') = interpX x m 
+    v' = case v of
+        VTuple2 v1 v2 -> v2
+        VTuple3 v1 v2 v3 -> v2
+    in (v',ios,m')
+
+interpX (Ap (Var "error") x) m = let 
+    (vptr,vs,m') = interpX x m 
+    (VArray a n) = getFromHeap vptr m'
+    -- convert VChar array to Char list
+    msg          = map vgetChar (arrayToList a n)
+    in error msg
 
 interpX (Op1 "-" x) m =
     interpOp1 interpToInt (\x -> 0 - x) VInt x m
-interpX (Op1 "not" x) m =
+interpX (Ap (Var "not") x) m =
     interpOp1 interpToBool not VBool x m
-interpX (Op1 "printChar" x) m =
-    interpOp1 interpToChar id (VIO . VChar) x m
-interpX (Op1 "@" x) m =
-    let (s1,vs,m') = interpX (Op1 "show" x) m 
-        (s2,m'') = allocateArray [VChar '\n'] m'
-        (s',m''') = appendArrays s1 s2 m''
-    in
-        (VIO $ s',vs,m''')
-interpX (Op1 "show" x) m = 
+interpX (Ap (Var "printChar") x) m = let
+    (v,vs,m') = interpToChar x m
+    in (VVoid,vs++[return $ VChar v],m')
+-- interpX (Op1 "@" x) m =
+--     let (s1,vs,m') = interpX (Op1 "show" x) m 
+--         (s2,m'') = allocateArray [VChar '\n'] m'
+--         (s',m''') = appendArrays s1 s2 m''
+--     in
+--         (VVoid,vs++[return s'],m''')
+interpX (Ap (Var "show") x) m = 
     let (v,vs,m')  = interpX x m 
         s          = map VChar $ aux v m'
         (vptr,m'') = allocateArray s m'
@@ -452,7 +503,10 @@ interpX (Op1 "show" x) m =
             VFloat f    -> show f
             VChar c     -> show c
             VBool b     -> show b
-            VTup v1 v2  -> "(" ++ aux v1 m ++ ", " ++ aux v2 m ++ ")"
+            VTuple2 v1 v2  -> 
+                "(" ++ aux v1 m ++ ", " ++ aux v2 m ++ ")"
+            VTuple3 v1 v2 v3 -> 
+                "(" ++ aux v1 m ++ ", " ++ aux v2 m ++ ", " ++ aux v3 m ++ ")"
             VArray a n  -> showArray a n 0
             VPtr ptr    -> aux (getFromHeap (VPtr ptr) m) m
             v           -> error $ "Invalid type to show: " ++ show v
@@ -460,20 +514,18 @@ interpX (Op1 "show" x) m =
     showArray _ 0 0 = "[]"
     showArray a 1 0 = "[" ++ aux (a Array.! 0) m ++ "]"
     showArray a n 0 = "[" ++ aux (a Array.! 0) m ++ showArray a n 1
-    showArray a n i | n-1 == i = "; " ++ aux (a Array.! i) m ++ "]"
-    showArray a n i = "; " ++ aux (a Array.! i) m ++ showArray a n (i+1)
+    showArray a n i | n-1 == i = ", " ++ aux (a Array.! i) m ++ "]"
+    showArray a n i = ", " ++ aux (a Array.! i) m ++ showArray a n (i+1)
 
 
-interpX (Ap (Ap (Var "Array") x1) x2) m =
-    let (n,vs,m')   = interpToInt x1 m 
-        (v,vs',m'') = interpX x2 m'
-        (_,_,h)     = m''
-        (vptr,h')   = genPtr h
-        a           = VArray (makeArray n v) n
-        (c,g,_)     = m''
-        m'''        = mapToHeap vptr a (c,g,h')
+interpX (Ap (Var "Array") x) m =
+    let (n,vs,m')   = interpToInt x m 
+        (c',g',h')  = m'
+        (vptr,h'')  = genPtr h'
+        a           = VArray (makeArray n (VInt $ toInteger 0)) n
+        m''         = mapToHeap vptr a (c',g',h'')
     in
-        (vptr,vs++vs',m''')
+        (vptr,vs,m'')
 interpX (Op2 "!" x1 x2) m =
     case interpX x1 m of
         (vptr@(VPtr _),vs,m') ->
@@ -516,3 +568,18 @@ interpX (ApNull x) m =
     let ((VFn fl [] [] fb),vs,m') = interpX x m
         (v,vs',m'') = interpRunFn fb [] [] m'
     in (v,vs++vs',m'')
+
+interpX (Op2 "$" x1 x2) m = interpX (Ap x1 x2) m
+
+-- user defined ops
+interpX (Op2 op x1 x2) m = let
+    (_,g,_) = m
+    (VFn _ fps _ fb) = getFromContext op g
+    (v,ios,m') = interpRunFn fb fps [x2,x1] m
+    in (v,ios,m')
+
+interpX (Op1 op x) m = let
+    (_,g,_) = m
+    (VFn _ fps _ fb) = getFromContext op g
+    (v,ios,m') = interpRunFn fb fps [x] m
+    in (v,ios,m')

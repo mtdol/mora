@@ -1,0 +1,110 @@
+{-
+--Yet to implement
+data Maybe a    := Yes a  | No;
+data Either a b := Left a | Right b;
+
+-}
+
+
+-- id :: a -> a;
+fn id a {return a;}
+
+--map :: (a -> b) -> Array a -> Void;
+fn map f a {
+    dec i;
+    i <- 0;
+
+    While (i /= a.length) {
+        a ! i <- f (a ! i);
+        i   +< 1;
+    }
+}
+
+-- map and generate a new array
+--map :: (a -> b) -> Array a -> Array b;
+fn gmap f a {
+    dec i, ret;
+    i <- 0;
+    ret <- Array (a.length);
+
+    While (i /= a.length) {
+        ret ! i <- f (a ! i);
+        i   +< 1;
+    }
+
+    return ret;
+}
+
+--append :: Array a -> Array a -> Array a;
+fn append a1 a2 {
+    dec ret, i;
+    ret <- Array (a1.length + a2.length);
+    i <- 0;
+
+    While (i /= a1.length) {
+        ret ! i <- a1 ! i;
+        i     +< 1;
+    }
+
+    While (i /= ret.length) {
+        ret ! i <- a2 ! (i-a1.length);
+        i     +< 1;
+    }
+
+    return ret;
+}
+
+--filter :: (a -> Bool) -> Array a -> Array a;
+fn filter f a {
+    dec ret, i, reti, j, ret2;
+    ret     <- Array a.length;
+    i       <- 0;
+    reti    <- 0;
+
+    While (i /= a.length) {
+        If (f $ a ! i) {
+            ret ! reti <- a ! i;
+            reti     +< 1;
+        }
+        i +< 1;
+    }
+
+    -- shrink array
+    j <- 0;
+    ret2 <- Array reti;
+    While (j /= reti) {ret2 ! j <- ret ! j; j +< 1;}
+
+    return ret2;
+}
+
+op @ v {
+    dec s,i;
+    i <- 0;
+    s <- show v;
+
+    While (i /= s.length) {
+        printChar $ s ! i;
+        i +< 1;
+    }
+
+    printChar '\n';
+}
+
+op ++ a b {return a `append` b;}
+
+fn main {
+    dec a;
+    a <- [1,2,3];
+    \ x {return x - 1;} `map` a;
+    @ a ++ [4,5];
+    @ \ x {return x+1;} `gmap` [4,5];
+    @ \ x {return x % 2 = 0;} `filter` [1,2,3,4,5];
+    
+    dec b;
+    b <- id `gmap` a; -- clone the array
+    a ! 0 <- 9;
+    @a;
+    @b;
+    
+    return 0;
+}

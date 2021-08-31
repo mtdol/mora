@@ -17,16 +17,23 @@ fn main {
     @ 5 `sub` 3;
     @ add1 6;
 
-    vs <- [1;2;3];
+    vs <- [1,2,3];
     @ vs;
 
     -- map in place using lambda
     map add1 vs;
     @ vs;
     
-    -- a little currying
+    -- we do a little currying
     map (sub 2) vs;
     @vs;
+
+    -- directly pass in a lambda
+    map (\x {return sub x 3;}) vs;
+    @vs;
+
+    -- calls the nullary lambda, receives `sub 3`, applies 4
+    @ (\ {return sub 3;})() 4; -- prints "-1"
 
     return 0;
 }

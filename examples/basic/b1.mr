@@ -1,4 +1,4 @@
--- very basic version of the language with explicit semicolons and brackets
+-- basic
 fn main {
     dec x;
     dec y;

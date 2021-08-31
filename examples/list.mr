@@ -4,57 +4,60 @@ data List a :=
     | Null
 ;
 
-singleton :: a -> List a;
-fn singleton x {return Cons x Null;}
+-- TODO: if we get function overloading, remove the `l`s from the function
+--  names
+
+lsingleton :: a -> List a;
+fn lsingleton x {return Cons x Null;}
 
 -- defines `:` as the `cons` operator
--- tokens like `:` are always infix ops
-fn : x xs {return Cons x xs;}
+op : x xs {return Cons x xs;}
+op ++ xs ys {return xs `lappend` ys;}
 
-append :: List a -> List a -> List a;
-fn append xs ys {return
+lappend :: List a -> List a -> List a;
+fn lappend xs ys {return
     -- `,` is tuple constructor
     -- `case` is an expression, `Case` is a statement
     case xs, ys {
         Null, ys -> 
             ys;
         (x:xs), ys ->
-            Cons x (xs `append` ys);
+            Cons x (xs `lappend` ys);
     }
 ;}
 
-head :: List a -> a;
-fn head xs {
+lhead :: List a -> a;
+fn lhead xs {
     If xs = Null {error "Cannot head deref Null."}
     Else {return xs.val;}
 }
 
-tail :: List a -> List a;
-fn tail xs {
+ltail :: List a -> List a;
+fn ltail xs {
     If xs = Null {error "Cannot tail deref Null.";}
     Else {return xs.next}
 }
 
-reverse :: List a -> List a;
-fn reverse xs {return
+lreverse :: List a -> List a;
+fn lreverse xs {return
     case xs {
         Null -> Null;
-        x:xs -> (reverse xs) `append` (singleton x);
+        x:xs -> (lreverse xs) `lappend` (singleton x);
     }
 ;}
 
-map :: (a -> b) -> List a -> List b;
-fn map f xs {return
+lmap :: (a -> b) -> List a -> List b;
+fn lmap f xs {return
     case xs {
         Null -> Null;
-        x:xs -> f x : map f xs;
+        x:xs -> f x : f `lmap` xs;
     }
 ;}
 
-filter :: (a -> Bool) -> List a -> List a;
-fn filter f xs {return
+lfilter :: (a -> Bool) -> List a -> List a;
+fn lfilter f xs {return
     case xs {
         Null -> Null;
-        x:xs -> if f x then x : filter f xs else filter f xs;
+        x:xs -> if f x then x : f `lfilter` xs else f `lfilter` xs;
     }
 ;}

@@ -1,0 +1,20 @@
+dec a;
+a <- 3;
+
+{dec a; a <- a + 1; @ a;}
+
+@ a;
+
+fn main {
+    dec x;
+    x <- 7;
+    
+    {dec x; x <- x + 1; @x;}
+
+    @ x;
+
+    @ a;
+    
+    -- program should have printed "4 3 8 7 3"
+    return 0;
+}
