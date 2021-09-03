@@ -15,6 +15,7 @@ main = do
     handleArgs args
 
 stdModuleImport = "#include <std.mr>"
+includeStd = True
 
 handleArgs :: [String] -> IO ()
 handleArgs ("-e":arg:[]) = 
@@ -30,7 +31,8 @@ handleArgs _ = print "Invalid Args."
 run :: Bool ->              String ->   String ->   [String] -> IO ()
 run im text cf args = do
     -- standard module
-    let text' = stdModuleImport ++ "\n" ++ text
+    let text' = if includeStd then stdModuleImport ++ "\n" ++ text
+        else text
     text'' <- process text' 0 cf
     let p = readProg text''
     let p' = if True then p else error "Malformed."

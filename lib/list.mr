@@ -1,6 +1,19 @@
--- causes an import cycle
--- #include <std.mr>
+data List a := Cons val :: a, next :: List a | Null;
 
--- dunno just a placeholder
-dec list;
-list <- True;
+op : := Cons;
+
+fn null v {return v = Null;}
+
+fn head v {return
+    if null v then 
+        error "`head`: Cannot deref Null."
+    else
+        v.val
+;}
+
+fn tail v {return
+    if null v then 
+        error "`tail`: Cannot deref Null."
+    else
+        v.next
+;}

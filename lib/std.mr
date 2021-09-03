@@ -1,30 +1,37 @@
 #include <list.mr>
 
-{-
---Yet to implement
-data Maybe a    := Yes a  | No;
-data Either a b := Left a | Right b;
+data Maybe a    := Yes val :: a  | No;
+data Either a b := Left val :: a | Right val :: b;
 
--}
+-- generic heap reference
+data Ref a      := Ref val :: a;
+fn deref ref    {return ref.val;}
+fn mutate ref v {ref.val <- v;}
 
-op @ v {
-    dec s,i;
-    i <- 0;
-    s <- show v;
+-- data Bool       := True | False; 
 
-    While (i /= s.length) {
-        printChar $ s ! i;
-        i +< 1;
-    }
+type String     := Array Char;
 
-    printChar '\n';
-}
+op @   := printLn;
+op ++  := append;
+op &&  := and;
+op ||  := or;
+op ^^  := xor;
 
-op ++ a b {return a `append` b;}
 
 -- id :: a -> a;
 fn id a {return a;}
 
+--not :: Bool -> Bool;
+fn not b {return if b then False else True;}
+--and :: Bool -> Bool -> Bool;
+fn and b1 b2 {return if b1 then (if b2 then True else False) else False;}
+--or :: Bool -> Bool -> Bool;
+fn or b1 b2 {return if b1 then True else (if b2 then True else False);}
+--xor :: Bool -> Bool -> Bool;
+fn xor b1 b2 {return b1 /= b2;}
+
+-- in place map
 --map :: (a -> b) -> Array a -> Void;
 fn map f a {
     dec i;
@@ -32,11 +39,12 @@ fn map f a {
 
     While (i /= a.length) {
         a ! i <- f (a ! i);
-        i   +< 1;
+        i +< 1;
     }
 }
 
 -- map and generate a new array
+-- "generative" map
 --map :: (a -> b) -> Array a -> Array b;
 fn gmap f a {
     dec i, ret;
@@ -45,10 +53,23 @@ fn gmap f a {
 
     While (i /= a.length) {
         ret ! i <- f (a ! i);
-        i   +< 1;
+        i +< 1;
     }
 
     return ret;
+}
+
+-- applies a function to an array without modifying it.
+-- "void" map
+--vmap :: (a -> b) -> Array a -> Void;
+fn vmap f a {
+    dec i;
+    i <- 0;
+
+    While (i /= a.length) {
+        f $ a ! i;
+        i +< 1;
+    }
 }
 
 --append :: Array a -> Array a -> Array a;
@@ -72,7 +93,7 @@ fn append a1 a2 {
 
 --filter :: (a -> Bool) -> Array a -> Array a;
 fn filter f a {
-    dec ret, i, reti, j, ret2;
+    dec ret, i, reti, ret2;
     ret     <- Array a.length;
     i       <- 0;
     reti    <- 0;
@@ -86,9 +107,67 @@ fn filter f a {
     }
 
     -- shrink array
-    j <- 0;
+    i <- 0;
     ret2 <- Array reti;
-    While (j /= reti) {ret2 ! j <- ret ! j; j +< 1;}
+    While (i /= reti) {ret2 ! i <- ret ! i; i +< 1;}
 
     return ret2;
+}
+
+-- TODO: make is a (i1, i2) tuple in the definition
+--slice :: Array a -> (Int, Int) -> Array a
+fn slice a is {
+    dec ret, reti, i1, i2;
+    i1 <- fst is;
+    i2 <- snd is;
+    reti <- 0;
+
+    If (i1 > i2 || (i2 - i1) > a.length) {
+        error $ "Invalid range for slice: [" 
+            ++ show i1 ++ " " ++ show i2 ++ ")";
+    }
+    ret <- Array (i2 - i1);
+    
+    While (i1 /= i2) {
+        ret ! reti <- a ! i1;
+        reti  +< 1;
+        i1 +< 1;
+    }
+
+    return ret;
+}
+
+
+--
+--- IO
+--
+
+-- TODO: might go away, basically for testing
+fn retPrint v {printLn v; return v;}
+
+--print :: a -> Void;
+fn print v {printChar `vmap` show v;}
+--printLn :: a -> Void;
+fn printLn v {print v; printChar '\n';}
+
+--
+--- Structures, Tuples
+--
+
+-- TODO: pattern matching
+-- uncurry :: (a -> b -> c) -> (a, b) -> c;
+fn uncurry f xy {return
+    f (fst xy) (snd xy)
+;}
+
+-- curry :: ((a, b) -> c) -> a -> b -> c;
+fn curry f x y {return
+    f (x,y)
+;}
+
+fn main {
+    @ curry (\t {return fst t - snd t;}) 3 5;
+    @ uncurry (\x y {return x - y;}) (3,5);
+
+    return 0;
 }

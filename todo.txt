@@ -29,8 +29,6 @@ perhaps lift the sub-procs to the global space (to allow recursion)
     and then do static variable renaming
 
 
-- algebraic data types
-
 - case expr/statements 
 
 

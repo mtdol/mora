@@ -16,7 +16,22 @@ data Stmt =
     | If Expr Seq Seq
     --   Name   Params   Body
     | Fn String [String] Seq 
-    | Op String [String] Seq 
+    | Op String String
+    -- `List a := Cons val :: a, next :: List a | Null`
+    -- -> DType "List" [(Var "a")] Elems;
+    -- Elems -> 
+    --  [ ("Cons", 
+    --      [("val", (Var "a")), ("next", (Ap (Var "List") (Var "a")))])
+    --  , ("Null", [])
+    --  ]
+    --
+    --      type cons name  type vars   see below 
+    | DType String          [String]    [DTypeElem]
+    -- type String := List Char;
+    --  -> TypeAlias "String" (Ap (Var "List") (Var "Char"))
+    --
+    --
+    | TypeAlias String Expr
     | While Expr Seq
     | Dec Expr
     | Assign Expr Expr
@@ -43,6 +58,8 @@ data Expr =
     deriving (Show, Eq, Ord)
 
 type Program = Seq
+--                value cons label   field label  type expr
+type DTypeElem = (String,           [(String,     Expr)])
 
 def =
   emptyDef { Token.commentStart     = "{-"
@@ -57,11 +74,10 @@ def =
                                       , "else"
                                       , "dec"
                                       , "fn"
+                                      , "data"
+                                      , "type"
                                       , "While"
                                       , "return"
-                                      , "and"
-                                      , "or"
-                                      , "xor"
                                       , "True"
                                       , "False"
                                       ]
@@ -71,10 +87,10 @@ def =
                                       , "-."
                                       , "*"
                                       , "*."
+                                      , "**"
+                                      , "**."
                                       , "/"
                                       , "/."
-                                      , "^"
-                                      , "^."
                                       , "="
                                       , "/="
                                       , "<"
@@ -82,8 +98,10 @@ def =
                                       , ">="
                                       , "<="
                                       , "%"
+                                      , ":="
                                       , "<-"
                                       , "->"
+                                      , "."
                                       , "::"
                                       , "()"
                                       , "\\"
@@ -98,15 +116,24 @@ def =
                                       , "//"
                                       , "=="
                                       , "/=="
+                                      , "&&"
+                                      , "&"
+                                      , "||"
+                                      , "|"
+                                      , "^^"
+                                      , "^"
                                       , "!!"
                                       , "**"
                                       , ">>"
                                       , ">>="
                                       , "<|>"
+                                      , "<+>"
                                       , "<&>"
                                       , "<$>"
                                       , "<@>"
                                       , "<:>"
+                                      , "</>"
+                                      , "<*>"
                                       ]
            }
 
@@ -129,37 +156,39 @@ dot         = Token.dot         lexer
 symbol      = Token.symbol      lexer
 
 -- ops that can be repurposed
-op = symbol "@"     -- done
- <|> symbol "<@>"   -- done
- <|> symbol ":"     -- done
- <|> symbol "++"    -- done
- <|> symbol "//"    -- done
- <|> symbol "**"    -- done
- <|> symbol "^^"    -- done
- <|> symbol "=="    -- done
- <|> symbol "/=="   -- done
- <|> symbol "!!"    -- done
- <|> symbol "$$"    -- done
- <|> symbol ">>"    -- done
- <|> symbol ">>="   -- done
- <|> symbol "<|>"   -- done
- <|> symbol "<&>"   -- done
- <|> symbol "<:>"   -- done
- <|> symbol "<$>"   -- done
-
--- identifier = do
---     s1 <- many1 (letter <|> char '_')
---     s2 <- many (alphaNum <|> char '_')
---     s3 <- many (char '\'')
---     return $ s1++s2++s3
+op = try (symbol "@")
+ <|> try (symbol "&&")
+ <|> try (symbol "&")
+ <|> try (symbol "||")
+ <|> try (symbol "|")
+ <|> try (symbol "^^")
+ <|> try (symbol "^")
+ <|> try (symbol ":")
+ <|> try (symbol "++")
+ <|> try (symbol "//")
+ <|> try (symbol "==")
+ <|> try (symbol "/==")
+ <|> try (symbol "!!")
+ <|> try (symbol "$$")
+ <|> try (symbol ">>=")
+ <|> try (symbol ">>")
+ <|> try (symbol "<@>")
+ <|> try (symbol "<$>")
+ <|> try (symbol "</>")
+ <|> try (symbol "<*>")
+ <|> try (symbol "<:>")
+ <|> try (symbol "<+>")
+ <|> try (symbol "<|>")
+ <|> try (symbol "<&>")
 
 operators = [  
                [Infix   (reservedOp ""  >> return (Ap)) AssocLeft,
                 Postfix (reservedOp "()"  >> return (ApNull))
                 ]
             ,  [Prefix  (reservedOp "-" >> return (Op1 "-")),
-                Infix   (reserved "!" >> return (Op2 "!")) AssocLeft,
-                Infix   (reserved "!!" >> return (Op2 "!!")) AssocLeft,
+                Infix   (reservedOp "." >> return (Op2 ".")) AssocLeft,
+                Infix   (reservedOp "!" >> return (Op2 "!")) AssocLeft,
+                Infix   (reservedOp "!!" >> return (Op2 "!!")) AssocLeft,
                 Infix   
                     (do 
                         v <- infixVar
@@ -168,13 +197,13 @@ operators = [
                 ]
             ,  [Infix   (reservedOp "->" >> return (Op2 "->")) AssocLeft
                 ]
-            ,  [Infix   (reservedOp "^"  >> return (Op2 "^")) AssocLeft,
-                Infix   (reservedOp "^."  >> return (Op2 "^.")) AssocLeft,
-                Infix   (reservedOp "**" >> return (Op2 "**")) AssocLeft,
-                Infix   (reservedOp "^^" >> return (Op2 "^^")) AssocLeft
+            ,  [Infix   (reservedOp "**"  >> return (Op2 "**")) AssocLeft,
+                Infix   (reservedOp "**."  >> return (Op2 "**.")) AssocLeft,
+                Infix   (reservedOp "<*>"  >> return (Op2 "<*>")) AssocLeft
                 ]
             ,  [Infix   (reservedOp "*" >> return (Op2 "*")) AssocLeft,
                 Infix   (reservedOp "*." >> return (Op2 "*.")) AssocLeft,
+                Infix   (reservedOp "//" >> return (Op2 "//")) AssocLeft,
                 Infix   (reservedOp "/" >> return (Op2 "/")) AssocLeft,
                 Infix   (reservedOp "/." >> return (Op2 "/.")) AssocLeft,
                 Infix   (reservedOp "%" >> return (Op2 "%")) AssocLeft
@@ -182,30 +211,36 @@ operators = [
             ,  [Infix   (reservedOp "+" >> return (Op2 "+")) AssocLeft,
                 Infix   (reservedOp "+." >> return (Op2 "+.")) AssocLeft,
                 Infix   (reservedOp "-" >> return (Op2 "-")) AssocLeft,
-                Infix   (reservedOp "-." >> return (Op2 "-.")) AssocLeft,
-                Infix   (reservedOp "//" >> return (Op2 "//")) AssocLeft,
-                Infix   (reservedOp ":" >> return (Op2 ":")) AssocRight,
-                Infix   (reservedOp "<:>" >> return (Op2 "<:>")) AssocRight
+                Infix   (reservedOp "-." >> return (Op2 "-.")) AssocLeft
                 ]
             ,  [Infix   (reservedOp ">" >> return (Op2 ">")) AssocLeft,
                 Infix   (reservedOp "<" >> return (Op2 "<")) AssocLeft,
                 Infix   (reservedOp ">=" >> return (Op2 ">=")) AssocLeft,
                 Infix   (reservedOp "<=" >> return (Op2 "<=")) AssocLeft
                 ]
-            ,  [Infix   (reserved "and" >> return (Op2 "and")) AssocLeft,
-                Infix   (reserved "or"  >> return (Op2 "or")) AssocLeft,
-                Infix   (reserved "xor" >> return (Op2 "xor")) AssocLeft,
+            ,  [Infix   (reservedOp "&&" >> return (Op2 "&&")) AssocLeft,
+                Infix   (reservedOp "&" >> return (Op2 "&")) AssocLeft,
+                Infix   (reservedOp "||"  >> return (Op2 "||")) AssocLeft,
+                Infix   (reservedOp "|"  >> return (Op2 "|")) AssocLeft,
+                Infix   (reservedOp "^^" >> return (Op2 "^^")) AssocLeft,
+                Infix   (reservedOp "^" >> return (Op2 "^")) AssocLeft,
                 Infix   (reservedOp "<|>" >> return (Op2 "<|>")) AssocLeft,
-                Infix   (reservedOp "<&>" >> return (Op2 "<&>")) AssocLeft 
-                ]
-            ,  [Infix   (reserved "=" >> return (Op2 "=")) AssocLeft,
-                Infix   (reserved "/="  >> return (Op2 "/=")) AssocLeft,
-                Infix   (reserved "=="  >> return (Op2 "==")) AssocLeft,
-                Infix   (reserved "/=="  >> return (Op2 "/==")) AssocLeft
+                Infix   (reservedOp "<&>" >> return (Op2 "<&>")) AssocLeft,
+                Infix   (reservedOp "</>" >> return (Op2 "</>")) AssocLeft 
                 ]
             ,  [Infix   (reservedOp "++" >> return (Op2 "++")) AssocLeft,
+                Infix   (reservedOp "<+>" >> return (Op2 "<+>")) AssocLeft,
                 Infix   (reservedOp ">>" >> return (Op2 ">>")) AssocLeft,
                 Infix   (reservedOp ">>=" >> return (Op2 ">>=")) AssocLeft,
+                Infix   (reservedOp ":" >> return (Op2 ":")) AssocRight,
+                Infix   (reservedOp "<:>" >> return (Op2 "<:>")) AssocRight
+                ]
+            ,  [Infix   (reservedOp "=" >> return (Op2 "=")) AssocLeft,
+                Infix   (reservedOp "/="  >> return (Op2 "/=")) AssocLeft,
+                Infix   (reservedOp "=="  >> return (Op2 "==")) AssocLeft,
+                Infix   (reservedOp "/=="  >> return (Op2 "/==")) AssocLeft
+                ]
+           ,   [
                 Infix   (reservedOp "$" >> return (Op2 "$")) AssocRight,
                 Infix   (reservedOp "$$" >> return (Op2 "$$")) AssocRight,
                 Infix   (reservedOp "<$>" >> return (Op2 "<$>")) AssocLeft
@@ -229,16 +264,22 @@ decExpr = buildExpressionParser decOperators decTerm
 decTerm = var
 
 
--- lhsOperators = 
---     [ 
---         [Infix   (reservedOp "!" >> return (Op2 "!")) AssocLeft]
-    
+typeOperators = 
+    [ 
+        [Infix   (reservedOp "" >> return (Ap)) AssocLeft]
+    ,   [Infix   (reservedOp "->" >> return (Op2 "->")) AssocLeft]
+    ]
 
---     ]
+-- the rhs of the `::` operator
+typeExpr = buildExpressionParser typeOperators typeTerm
 
-lhsExpr = expr --buildExpressionParser lhsOperators lhsTerm
+typeTerm =
+        parens typeExpr 
+    <|> var
 
--- lhsTerm = term
+
+
+lhsExpr = expr 
 
 readProg :: String -> Seq
 readProg input = case parse beginParse "" input of
@@ -266,6 +307,8 @@ statement =
     <|> returnStmt
     <|> fnStmt
     <|> opStmt
+    <|> typeStmt
+    <|> dataStmt
     <|> try assignStmt
     <|> baseStmt
     <|> (semi >> (return NOP))
@@ -337,10 +380,41 @@ fnStmt = do
 
 opStmt = do
     reserved "op"
-    n <- op
-    params <- many identifier
-    b <- block
-    return $ Op n params b
+    opname <- op
+    reservedOp ":="
+    fname  <- identifier
+    semi
+    return $ Op opname fname
+
+typeStmt = do
+    reserved "type"
+    label <- identifier
+    reservedOp ":="
+    tx <- typeExpr
+    semi
+    return $ TypeAlias label tx
+
+dataStmt = do
+    reserved "data"
+    label <- identifier
+    ts <- many identifier
+    reservedOp ":="
+    elems <- dataStmtRHSElem `sepBy1` (reservedOp "|")
+    semi
+    return $ DType label ts elems
+
+dataStmtRHSElem = do
+    label <- identifier
+    -- could be none, so use `sepBy`
+    elems <- (do
+        label' <- identifier
+        reservedOp "::"
+        tx <- typeExpr
+        return $ (label', tx)
+        ) `sepBy` (reservedOp ",")
+    return $ (label, elems)
+    
+
 
 
 whileStmt = do
@@ -404,15 +478,7 @@ tupleLiteral = parens $ do
     xs <- expr `sepBy1` (reservedOp ",")
     return $ PTuple (x1:xs)
 
-superTerm = 
-        try genitive
-    <|> term
-
-genitive = do
-    x1 <- term
-    dot
-    x2 <- var
-    return $ Op2 "." x1 x2
+superTerm = term
 
 term = 
     try tupleLiteral
@@ -425,7 +491,7 @@ term =
     <|> try (reserved "True" >> return (PBool True))
     <|> try (reserved "False" >> return (PBool False))
     <|> try (liftM PFloat float)
-    <|> liftM Var identifier
+    <|> var
     <|> liftM PInt integer
 
 var = liftM Var identifier
