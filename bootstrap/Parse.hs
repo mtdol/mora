@@ -6,6 +6,8 @@ import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
 
+import qualified Data.Char as Char
+
 data Seq = Seq [Stmt]
     deriving (Show, Eq, Ord)
 
@@ -33,6 +35,7 @@ data Stmt =
     --
     | TypeAlias String Expr
     | While Expr Seq
+    | Case Expr [CaseStmtElem]
     | Dec Expr
     | Assign Expr Expr
     | Return Expr
@@ -53,13 +56,36 @@ data Expr =
     | Ifx Expr Expr Expr -- If expr
     --       params   body
     | Lambda [String] Seq
+    | CaseX Expr [CaseExprElem]
     | Op1 String Expr
     | Op2 String Expr Expr
+    deriving (Show, Eq, Ord)
+
+data PatExpr = 
+      PatVar String
+    | PatInt Integer
+    | PatFloat Double
+    | PatString String
+    | PatChar Char
+    | PatBool Bool
+    | PatAp PatExpr PatExpr
+    -- ":" operator probably
+    | PatOp2 String PatExpr PatExpr
+    -- for example: `tp@(1,2,3)`
+    | AsPattern String PatExpr
     deriving (Show, Eq, Ord)
 
 type Program = Seq
 --                value cons label   field label  type expr
 type DTypeElem = (String,           [(String,     Expr)])
+
+--                   pattern expr     pattern result
+type CaseStmtElem = (PatExpr,         Seq)
+type CaseExprElem = (PatExpr,         Expr)
+
+-- vars like "Array" and "Cons" and "Null"
+isConsVar :: String -> Bool
+isConsVar label = label /= "" && Char.isUpper (label !! 0)
 
 def =
   emptyDef { Token.commentStart     = "{-"
@@ -80,6 +106,8 @@ def =
                                       , "return"
                                       , "True"
                                       , "False"
+                                      , "Case"
+                                      , "case"
                                       ]
            , Token.reservedOpNames  = [ "+"
                                       , "+."
@@ -195,8 +223,6 @@ operators = [
                         return (\x y -> (Ap (Ap v x) y)))
                     AssocLeft
                 ]
-            ,  [Infix   (reservedOp "->" >> return (Op2 "->")) AssocLeft
-                ]
             ,  [Infix   (reservedOp "**"  >> return (Op2 "**")) AssocLeft,
                 Infix   (reservedOp "**."  >> return (Op2 "**.")) AssocLeft,
                 Infix   (reservedOp "<*>"  >> return (Op2 "<*>")) AssocLeft
@@ -278,6 +304,34 @@ typeTerm =
     <|> var
 
 
+patOperators = 
+    [ 
+      [Infix   (reservedOp "" >> return (PatAp)) AssocLeft]
+    , [Infix   (reservedOp ":" >> return (PatOp2 ":")) AssocRight,
+       Infix   (reservedOp "<:>" >> return (PatOp2 "<:>")) AssocRight]
+    , [Infix   (reservedOp "$" >> return (PatAp)) AssocRight]
+    ]
+
+patExpr = try asPattern 
+      <|> buildExpressionParser patOperators patTerm
+
+patTerm = 
+    parens patExpr
+    <|> liftM PatString stringLiteral
+    <|> liftM PatChar charLiteral
+    <|> try (reserved "True" >> return (PatBool True))
+    <|> try (reserved "False" >> return (PatBool False))
+    <|> try (liftM PatFloat float)
+    <|> liftM PatVar identifier
+    <|> liftM PatInt integer
+
+asPattern = do
+    label <- identifier
+    reservedOp "@"
+    px <- patExpr 
+    return $ AsPattern label px
+
+
 
 lhsExpr = expr 
 
@@ -303,6 +357,7 @@ statement =
         blockStmt
     <|> ifStmt
     <|> whileStmt
+    <|> caseStmt
     <|> decStmt
     <|> returnStmt
     <|> fnStmt
@@ -419,7 +474,7 @@ dataStmtRHSElem = do
 
 whileStmt = do
     reserved "While"
-    e       <- parens expr
+    e       <- expr
     b       <- block
     return $ While e b
 
@@ -427,7 +482,7 @@ ifStmt = try ifStmt1 <|> ifStmt2
 
 ifStmt1 = do
     reserved "If"
-    e       <- parens expr
+    e       <- expr
     b       <- block
     eb     <- elseStmt
     return $ If e b eb
@@ -442,6 +497,19 @@ elseStmt = do
     reserved "Else"
     b <- block
     return $ b
+
+caseStmt = do
+    reserved "Case"
+    x <- expr
+    elems <- braces (many1 caseStmtElem)
+    return $ Case x elems
+
+caseStmtElem :: Parser CaseStmtElem
+caseStmtElem = do
+    px <- patExpr
+    reservedOp "->"
+    b <- block
+    return $ (px,b)
 
 baseStmt = do
     e <- expr
@@ -465,6 +533,21 @@ lamExpr = do
     b  <- block
     return $ Lambda as b
 
+
+caseExpr = do
+    reserved "case"
+    x <- expr
+    elems <- braces (many1 caseExprElem)
+    return $ CaseX x elems
+
+caseExprElem :: Parser CaseExprElem
+caseExprElem = do
+    px <- patExpr
+    reservedOp "->"
+    x <- expr
+    semi
+    return $ (px,x)
+
 arrayLiteral = do
     reservedOp "["
     xs <- expr `sepBy` (reservedOp ",")
@@ -485,6 +568,7 @@ term =
     <|> parens expr
     <|> ifExpr
     <|> lamExpr
+    <|> caseExpr
     <|> liftM PString stringLiteral
     <|> arrayLiteral
     <|> liftM PChar charLiteral

@@ -1,0 +1,35 @@
+fn main {
+    -- case statement
+    Case 'c' {
+        'a' -> {putLn "it was 'a'";}
+        'b' -> {putLn "it was 'b'";}
+        'c' -> {putLn "it was 'c'";}
+        'd' -> {putLn "it was 'd'";}
+    }
+    
+    dec c;
+    -- case expr
+    c <- case 'c' {
+        'a' -> 'b';
+        'b' -> 'c';
+        'c' -> 'd';
+        'd' -> 'e';
+    };
+    @c;
+
+    @ case 1 + 2 {
+        n@2 -> n - 2;
+        n@3 -> n + 1;
+    } + 1;
+
+    Case 1:2:Null {
+        xs@x:y:Null -> {@ x-y; lprint xs; printChar '\n';}
+    }
+
+    @ case False {
+        True -> 1;
+        False -> 0;
+    };
+
+    return 0;
+}

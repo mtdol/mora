@@ -17,3 +17,17 @@ fn tail v {return
     else
         v.next
 ;}
+
+fn lprint xs {
+    Case xs {
+        x:xs -> {print x; put " : "; lprint xs;}
+        Null -> {put "Null";}
+    }
+}
+
+fn lfilter f xs {return
+    case xs {
+        x:xs -> if f x then x : lfilter f xs else lfilter f xs;
+        Null -> Null;
+    }
+;}

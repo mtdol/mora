@@ -31,6 +31,9 @@ fn or b1 b2 {return if b1 then True else (if b2 then True else False);}
 --xor :: Bool -> Bool -> Bool;
 fn xor b1 b2 {return b1 /= b2;}
 
+fn odd n {return n % 2 = 1;}
+fn even n {return n % 2 = 0;}
+
 -- in place map
 --map :: (a -> b) -> Array a -> Void;
 fn map f a {
@@ -150,6 +153,9 @@ fn print v {printChar `vmap` show v;}
 --printLn :: a -> Void;
 fn printLn v {print v; printChar '\n';}
 
+fn put s {printChar `vmap` s;}
+fn putLn s {printChar `vmap` s; printChar '\n';}
+
 --
 --- Structures, Tuples
 --
@@ -166,8 +172,9 @@ fn curry f x y {return
 ;}
 
 fn main {
-    @ curry (\t {return fst t - snd t;}) 3 5;
-    @ uncurry (\x y {return x - y;}) (3,5);
+    lprint $ lfilter odd $ 1:2:3:4:5:Null;
+    printChar '\n';
+
 
     return 0;
 }

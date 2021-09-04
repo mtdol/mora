@@ -450,6 +450,19 @@ interpS (While x ss) m =
                     let (v,os'',m''') = interpS (While x ss) (c'',g'',h'') in
                     (v,os++os'++os'',m''')
 
+-- case statement
+interpS (Case x elems) m =
+    let (v,os,m') = interpX x m
+        (v',os',m'') = interpCaseStmtElems elems v m'
+    in (v',os++os',m'')
+
+interpCaseStmtElems :: [CaseStmtElem] -> Value -> State 
+    -> (Maybe Value,[IO Value],State)
+interpCaseStmtElems [] _ _ = error "Pattern matching failed."
+interpCaseStmtElems ((px,ss):elems) v m = case interpP px v m of
+    Nothing -> interpCaseStmtElems elems v m
+    Just m' -> interpSeq ss m'
+
 interpOp2 :: 
        (Expr -> State -> (a, [IO Value], State)) 
     -> (Expr -> State -> (b, [IO Value], State))
@@ -677,9 +690,23 @@ interpX (ApNull x) m =
 
 interpX (Op2 "$" x1 x2) m = interpX (Ap x1 x2) m
 
+interpX (CaseX x elems) m =
+    let (v,os,m') = interpX x m
+        (v',os',m'') = interpCaseExprElems elems v m'
+    in (v',os++os',m'')
+
+
 -- user defined ops
 interpX (Op2 op x1 x2) m = interpX (Ap (Ap (Var op) x1) x2) m
 interpX (Op1 op x) m = interpX (Ap (Var op) x) m
+
+
+interpCaseExprElems :: [CaseExprElem] -> Value -> State 
+    -> (Value,[IO Value],State)
+interpCaseExprElems [] _ _ = error "Pattern matching failed."
+interpCaseExprElems ((px,x):elems) v m = case interpP px v m of
+    Nothing -> interpCaseExprElems elems v m
+    Just m' -> interpX x m'
 
 
 -- interprets the preloaded functions
@@ -748,3 +775,76 @@ interpShow x m =
     showArray a n 0 = "[" ++ aux (a Array.! 0) m ++ showArray a n 1
     showArray a n i | n-1 == i = ", " ++ aux (a Array.! i) m ++ "]"
     showArray a n i = ", " ++ aux (a Array.! i) m ++ showArray a n (i+1)
+
+
+-- interprets a a pattern against a value
+interpP :: PatExpr -> Value -> State -> Maybe State
+interpP px v m = case px of
+    PatInt i -> case v of
+        VInt i' -> if i==i' then Just m else Nothing
+        _ -> Nothing
+    PatFloat f -> case v of
+        VFloat f' -> if f==f' then Just m else Nothing
+        _ -> Nothing
+    PatChar c -> case v of
+        VChar c' -> if c==c' then Just m else Nothing
+        _ -> Nothing
+    PatBool b -> case v of
+        VBool b' -> if b==b' then Just m else Nothing
+        _ -> Nothing
+    pap@(PatAp _ _) -> let
+        (label,pxs) = patApToList pap
+        in case ptrToObj v m of
+            Just (VObj label' mbs) ->
+                if label /= label' then Nothing else
+                    interpPs (reverse pxs) (map snd mbs) m
+            _ -> Nothing
+    PatOp2 op px1 px2 -> case getFromState op m of
+        -- lookup op in state
+        (VCons label _ []) -> case ptrToObj v m of
+            Just (VObj label' mbs) ->
+                interpPs [px1,px2] (map snd mbs) m
+            _ -> Nothing
+    PatVar "_" -> Just m
+    PatVar label -> if isConsVar label then
+        case ptrToObj v m of
+            Just (VObj label' _) ->
+                if label /= label' then Nothing else
+                    Just m
+            _ -> Nothing
+        else Just $ mapToLocalContext label v m
+    AsPattern label x -> case interpP x v m of
+        Just m' -> Just $ mapToLocalContext label v m'
+        Nothing -> Nothing 
+ where
+    ptrToObj v m = case v of
+        vptr@(VPtr _) -> case getFromHeap vptr m of
+            obj@(VObj _ _) -> Just obj
+            _ -> Nothing
+        _ -> Nothing
+
+interpPs :: [PatExpr] -> [Value] -> State -> Maybe State
+interpPs [] [] m = Just m
+interpPs _ [] m = Nothing
+interpPs [] _ m = Nothing
+interpPs (px:pxs) (v:vs) m = case interpP px v m of
+    Just m' -> interpPs pxs vs m'
+    Nothing -> Nothing
+    
+
+-- turns a VTuple into a list of values
+tupleToList :: Value -> [Value]
+tupleToList v = case v of
+    VTuple2 v1 v2 -> 
+        [v1,v2]
+    VTuple3 v1 v2 v3 -> 
+        [v1,v2,v3]
+
+-- converts (PatAp (PatAp (Var "Cons") (PatInt 3)) (Var "Null")) ->
+--  ("Cons", [(PatInt 3), (Var "Null")])
+patApToList :: PatExpr -> (Label, [PatExpr])
+patApToList (PatAp (PatVar label) px) = (label, [px])
+patApToList (PatAp px1 px2) = let 
+    (label, pxs) = patApToList px1
+    in (label, px2:pxs)
+patApToList _ = error "pattern: Improper constructor application."

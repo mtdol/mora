@@ -9,7 +9,7 @@ endif
 
 
 syn keyword basicKeywords if If then else For While fn op type data
-syn keyword basicKeywords return dec
+syn keyword basicKeywords return dec case Case of
 
 syn match operators '\v[+\-/*^=<>@!$%&|:\\]'
 
