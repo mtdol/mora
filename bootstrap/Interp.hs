@@ -9,8 +9,7 @@ data Value =
     | VChar {vgetChar :: Char} 
     | VFloat {vgetFloat :: Double} 
     | VBool {vgetBool :: Bool}
-    | VTuple2 {v2get1 :: Value, v2get2 :: Value}
-    | VTuple3 {v3get1 :: Value, v3get2 :: Value, v3get3 :: Value}
+    | VTuple [Value]
     --       the array itself                         the length of the array
     | VArray {vgetArray :: Array.Array Integer Value, vgetArrayLength :: Integer}
     | VPtr Ptr
@@ -31,11 +30,11 @@ data Value =
     -- Value constructor 
     --
     -- Example: `Cons val :: a, next :: List a` would be
-    --  `VCons "Cons" ["val", "next"] []`
+    --  `VCons "Cons" 2 []`
     --  with no args applied
     -- 
-    --      name   fields  args
-    | VCons Label [Label] [Expr]
+    --      label  num fields  args
+    | VCons Label  Int         [Expr]
     -- the `label` is the name of the object, such as `Cons` or `Null`
     --
     -- the `member` tuples of the obj are always listed in the
@@ -44,8 +43,12 @@ data Value =
     -- for `(Cons 3 Null)` the VObj would be
     --  `VObj "Cons" [("val", 3), ("next", Null)]`
     --
-    --     label   member  value 
-    | VObj Label [(Label,  Value)]
+    --     label  members
+    | VObj Label  [Value]
+    --        cons name  index of member  args
+    | VGetter Label      Int              [Expr]
+    --        cons name  index of member  args
+    | VSetter Label      Int              [Expr]
     -- meaningless value, usually the result of an assignment 
     --  or Void returning function
     | VVoid
@@ -155,16 +158,6 @@ mapToHeap (VPtr ptr) v (c,g,(h,hptr)) =
     let h' = Map.insert ptr v h in
         (c,g,(h',hptr))
 
--- maps a value onto the object by label and returns the modified object
-mapToObj :: Value -> Label -> Value -> Value
-mapToObj obj@(VObj label mbs) field v = let
-    mbs' = aux mbs field v 
-    in (VObj label mbs') where
-    aux [] _ _ = error $ "Member `" ++ field ++
-                        "` not included in `" ++ label ++ "` instance."
-    aux ((mb,mbv):mbs) field v | field == mb = (mb,v):mbs
-    aux ((mb,mbv):mbs) field v = (mb,mbv) : aux mbs field v
-
 -- gets a value from the local and global contexts
 getFromState :: Label -> State -> Value
 getFromState id (c,g,_)
@@ -194,13 +187,6 @@ getFromHeap (VPtr ptr) (_,_,(h,_))
     | ptr `Map.member` h = h Map.! ptr
     | otherwise = error "get: Bad ptr."
 
--- takes an object and a member, and returns Just Value if the member could be found
-getMemberFromObj :: Value -> Label -> Maybe Value
-getMemberFromObj (VObj _ mbs) field = aux mbs field where
-    aux [] _ = Nothing
-    aux ((mb,v):_) field | field == mb = Just v
-    aux (_:mbs) field = aux mbs field
-
 listToArray :: [a] -> Array.Array Integer a
 listToArray es =
     let n   = toInteger $ length es
@@ -213,6 +199,12 @@ arrayToList :: Array.Array Integer Value -> Integer -> [Value]
 arrayToList a n = aux a n 0 where 
 aux a n i | i == n = []
 aux a n i = a Array.! i : aux a n (i+1)
+
+-- returns a new list with the elem at index replaced by `x'`
+updateList :: [a] -> a -> Int -> [a]
+updateList [] _ _ = []
+updateList (_:xs) x' 0 = x' : updateList xs x' (-1)
+updateList (x:xs) x' i = x : updateList xs x' (i-1)
     
 
 --                               return status  io stream    memory
@@ -270,8 +262,7 @@ mapPreloaded m = let
         , makePreloadedFn "show"        1
         , makePreloadedFn "error"       1
         , makePreloadedFn "Array"       1
-        , makePreloadedFn "fst"         1
-        , makePreloadedFn "snd"         1
+        , makePreloadedFn "length"      1
         ]
     in foldr (\f@(VFn _ _ _ (Left s)) acc -> mapToGlobalContext s f acc)
         m fs
@@ -286,6 +277,12 @@ interpOps (Seq (s:ss)) m@(_,g,_) = case s of
             in interpOps (Seq ss) m'
         cons@(VCons _ _ _) -> let
             m' = mapToGlobalContext opname cons m
+            in interpOps (Seq ss) m'
+        get@(VGetter _ _ _) -> let
+            m' = mapToGlobalContext opname get m
+            in interpOps (Seq ss) m'
+        set@(VSetter _ _ _) -> let
+            m' = mapToGlobalContext opname set m
             in interpOps (Seq ss) m'
     _ -> interpOps (Seq ss) m 
 
@@ -307,8 +304,9 @@ interpDTElems :: [DTypeElem] -> State -> State
 interpDTElems [] m = m
 interpDTElems ((label,rhs):elems) m = let
     --  label   rhs
-    -- ("Cons", [("val", (Var ... )), ("next", (...))])
-    --  fields = ["val", "next"]
+    -- ("Cons", [((Just "valget", Just "valset"), (Var ... )),
+    --  ((Just "nextget", Just "nextset"), (...))])
+    --  fields = [(Just "valget", Just "valset"), (Just "nextget", Just "nextset")]
     fields = map fst rhs
     in case fields of 
         -- Argument-less constructors like "Null" can be evaluated immediately
@@ -318,10 +316,38 @@ interpDTElems ((label,rhs):elems) m = let
             m'' = mapToGlobalContext label vptr m'
             in interpDTElems elems m''
         _ -> let
-            cons = VCons label fields []
+            m' = makeSettersGetters fields label m
+            cons = VCons label (length fields) []
             -- map the value constructor to the global context
-            m' = mapToGlobalContext label cons m
-            in interpDTElems elems m'
+            m'' = mapToGlobalContext label cons m'
+            in interpDTElems elems m''
+
+-- turns a list of cons fields into getters and setters, and maps
+--  them onto the global context
+--  
+--                      Getter        Setter            cons name
+makeSettersGetters :: [(Maybe String, Maybe String)] -> Label   
+    -> State -> State
+makeSettersGetters mbs label m = aux mbs label 0 m
+ where
+    aux [] _ _ m = m
+    -- `i` is the field iterator; when we make a getter/setter
+    --  it is important that it knows where in the obj the value
+    --  it is indexing is
+    aux (mb:mbs) label i m = let
+        m'  = makeGetter mb label i m
+        m'' = makeSetter mb label i m'
+        in aux mbs label (i+1) m''
+    makeGetter mb label i m = case mb of
+        (Just getlabel,_) -> let
+            vget = (VGetter label i [])
+            in mapToGlobalContext getlabel vget m
+        _ -> m
+    makeSetter mb label i m = case mb of
+        (_,Just setlabel) -> let
+            vset = (VSetter label i [])
+            in mapToGlobalContext setlabel vset m
+        _ -> m
             
     
 -- ignores toplevel function, op, and type defs and runs all other toplevel
@@ -330,6 +356,12 @@ interpDTElems ((label,rhs):elems) m = let
 --                                   io stream    memory
 interpGlobals :: Program -> State -> ([IO Value], State)
 interpGlobals (Seq []) m = ([], m)
+interpGlobals (Seq ((DecAssign (Var label) x2):ss)) m = let
+    (v2,os,m') = interpX x2 m
+    (c',g',h') = m'
+    g'' = Map.insert label v2 g'
+    (os',m'') = interpGlobals (Seq ss) (c',g'',h')
+    in (os++os',m'')
 interpGlobals (Seq ((Dec x):ss)) (c,g,h) =
     -- declare in global context
     let g' = aux x g 
@@ -375,15 +407,20 @@ interpS (Stmt x) m =
         (Nothing,os,m')
 interpS (Block ss) m = interpSeq ss m
 interpS (NOP) m    = (Nothing,[],m)
+interpS (DecAssign (Var label) x2) m = let
+    (v2,os,m') = interpX x2 m
+    (c',g',h') = m'
+    c'' = Map.insert label v2 c'
+    in (Nothing,os,(c'',g',h'))
 -- maps each var into the context with a meaningless `VVoid` value
 interpS (Dec x) (c,g,h) = 
     let c' = aux x c in (Nothing,[],(c',g,h)) where 
     aux x c = 
         case x of
-            Op2 "," (Var id) x2 -> aux x2 (Map.insert id VVoid c)
+            Op2 "," (Var label) x2 -> aux x2 (Map.insert label VVoid c)
             -- TODO: inserting Void might not be the best solution,
             --  maybe try `Maybe` instead
-            Var id              -> Map.insert id VVoid c
+            Var label              -> Map.insert label VVoid c
 
 interpS (Assign (Var id) x) m =
     let (v,os,m') = interpX x m
@@ -408,18 +445,15 @@ interpS (Assign (Op2 "!" lx1  lx2)   rx) m =
                 in (Nothing,os++os'++os'',m'''')
             _ -> error "Tried to `!` assign to non-array"
 
--- obj indexing
---
---                       ptr  label         rhs
-interpS (Assign (Op2 "." lx1  (Var label))  rx) m =
-    let (v,os,m') = interpX rx m
-        (vptr@(VPtr _),os',m'') = interpX lx1 m'
-    in case getFromHeap vptr m'' of
-        obj@(VObj _ _) -> let
-            obj' = mapToObj obj label v
-            m''' = mapToHeap vptr obj' m''
-            in (Nothing,os++os',m''')
-        _ -> error "Tried to `.` assign onto non-object."
+-- interpS (Assign (Op2 "." lx1  (Var label))  rx) m =
+--     let (v,os,m') = interpX rx m
+--         (vptr@(VPtr _),os',m'') = interpX lx1 m'
+--     in case getFromHeap vptr m'' of
+--         obj@(VObj _ _) -> let
+--             obj' = mapToObj obj label v
+--             m''' = mapToHeap vptr obj' m''
+--             in (Nothing,os++os',m''')
+--         _ -> error "Tried to `.` assign onto non-object."
        
 -- local function definition
 interpS (Fn fl fps fb) m = 
@@ -458,7 +492,9 @@ interpS (Case x elems) m =
 
 interpCaseStmtElems :: [CaseStmtElem] -> Value -> State 
     -> (Maybe Value,[IO Value],State)
-interpCaseStmtElems [] _ _ = error "Pattern matching failed."
+interpCaseStmtElems [] v _ = 
+    error $ "Pattern matching failed for:\n" 
+        ++ show v
 interpCaseStmtElems ((px,ss):elems) v m = case interpP px v m of
     Nothing -> interpCaseStmtElems elems v m
     Just m' -> interpSeq ss m'
@@ -501,11 +537,10 @@ interpOp1 f op t x m =
 -- constructs an Object and returns a pointer to it.
 -- The exprs are in normal order.
 --                                
-interpCons :: Label -> [Label] -> [Expr] -> State -> (Value,[IO Value],State)
-interpCons label fields xs m = let
+interpCons :: Label -> [Expr] -> State -> (Value,[IO Value],State)
+interpCons label xs m = let
     (vs,os,m') = interpXs (reverse xs) m
-    mbs = zip (reverse fields) vs
-    obj = VObj label (reverse mbs)
+    obj = VObj label (reverse vs)
     (vptr,m'') = genPtrMap obj m'
     in (vptr,os,m'')
 
@@ -562,14 +597,10 @@ interpX (PString s) m = let
     in (vptr,[],m')
 
 interpX (PTuple xs) m = let
-    (vs,os,m') = interpXs xs m
-    v = case vs of
-        [v1,v2] -> 
-            VTuple2 v1 v2
-        [v1,v2,v3] -> 
-            VTuple3 v1 v2 v3
-        _ -> error "Cannot construct more than 3-tuple."
-    in (v,os,m')
+    (vs,os,m') = interpXs xs m 
+    v = VTuple vs
+    (vptr,m'') = genPtrMap v m'
+    in (vptr,os,m'')
 
 interpX (Lambda lps lb) m = (VFn Nothing lps [] (Right lb),[],m)
 
@@ -633,18 +664,18 @@ interpX (Op2 "!" x1 x2) m =
                 _ -> error "Tried to array-deref a non-array."
         _ -> error "Tried to array-deref a non-array."
 
-interpX (Op2 "." x1 (Var id)) m =
-    case interpX x1 m of
-        (vptr@(VPtr _),os,m') -> 
-            case getFromHeap vptr m' of
-                VArray _ n -> if id == "length" then (VInt n,os,m') else
-                    error $ "Member `" ++ id ++ "` not included in Object."
-                obj@(VObj label _) -> case getMemberFromObj obj id of
-                    Nothing -> error $ "Member `" ++ id ++
-                        "` not included in `" ++ label ++ "` instance."
-                    Just v -> (v,os,m')
-                _ -> error "`.`: Ptr did not lead to a reference-able object."
-        _ -> error "Left side of `.` did not lead to a pointer."
+-- interpX (Op2 "." x1 (Var id)) m =
+--     case interpX x1 m of
+--         (vptr@(VPtr _),os,m') -> 
+--             case getFromHeap vptr m' of
+--                 VArray _ n -> if id == "length" then (VInt n,os,m') else
+--                     error $ "Member `" ++ id ++ "` not included in Object."
+--                 obj@(VObj label _) -> case getMemberFromObj obj id of
+--                     Nothing -> error $ "Member `" ++ id ++
+--                         "` not included in `" ++ label ++ "` instance."
+--                     Just v -> (v,os,m')
+--                 _ -> error "`.`: Ptr did not lead to a reference-able object."
+--         _ -> error "Left side of `.` did not lead to a pointer."
 
 interpX (Ifx x1 x2 x3) m =
     let (b1,os,m') = interpToBool x1 m in
@@ -656,12 +687,25 @@ interpX (Ifx x1 x2 x3) m =
         in (v,os++os',m'')
 
 interpX (Ap x1 x2) m = case interpX x1 m of
-    ((VCons label fields as),os,m') -> case fields of
-        [] -> error "Tried to apply argument onto nullary constructor."
-        _ -> if length as == length fields - 1 then
-            let (obj,os',m'') = interpCons label fields (reverse (x2:as)) m'
-            in (obj,os++os',m'')
-        else ((VCons label fields (x2:as)),os,m')
+    ((VGetter label i _),os,m') -> let
+        -- only one arg for getter, so just run
+        (v,os',m'') = interpVGetter (VGetter label i [x2]) m'
+        in (v,os++os',m'')
+    ((VSetter label i as),os,m') -> case as of
+        -- currying
+        [] -> ((VSetter label i [x2]),os,m')
+        -- run case
+        [x1] -> let
+            (v,os',m'') = interpVSetter (VSetter label i [x2,x1]) m'
+            in (v,os++os',m'')
+    ((VCons label n as),os,m') -> case n of
+        0 -> error "Tried to apply argument onto nullary constructor."
+        _ -> if length as == n - 1 then
+            -- run
+            let (vptr,os',m'') = interpCons label (reverse (x2:as)) m'
+            in (vptr,os++os',m'')
+            -- currying
+            else ((VCons label n (x2:as)),os,m')
     ((VFn fl fps fas fb),os,m') ->
         case fps of
             [] -> error "Tried to apply argument onto nullary function."
@@ -675,6 +719,7 @@ interpX (Ap x1 x2) m = case interpX x1 m of
                         Left op -> let
                             (v,os',m'') = interpPreloadedFn op (reverse (x2:fas)) m'
                             in (v,os++os',m'')
+                -- currying
                 else (VFn fl fps (x2:fas) fb,os,m')
 
 interpX (ApNull x) m =
@@ -703,7 +748,9 @@ interpX (Op1 op x) m = interpX (Ap (Var op) x) m
 
 interpCaseExprElems :: [CaseExprElem] -> Value -> State 
     -> (Value,[IO Value],State)
-interpCaseExprElems [] _ _ = error "Pattern matching failed."
+interpCaseExprElems [] v _ =
+    error $ "Pattern matching failed for:\n" 
+        ++ show v
 interpCaseExprElems ((px,x):elems) v m = case interpP px v m of
     Nothing -> interpCaseExprElems elems v m
     Just m' -> interpX x m'
@@ -734,20 +781,44 @@ interpPreloadedFn op xs m = case op of
         a           = VArray (makeArray n (VInt $ toInteger 0)) n
         m''         = mapToHeap vptr a (c',g',h'')
         in (vptr,os,m'')
-    "fst" -> let
+    "length" -> let
         [x] = xs
-        (v,os,m') = interpX x m 
-        v' = case v of
-            VTuple2 v1 v2 -> v1
-            VTuple3 v1 v2 v3 -> v1
-        in (v',os,m')
-    "snd" -> let
-        [x] = xs
-        (v,os,m') = interpX x m 
-        v' = case v of
-            VTuple2 v1 v2 -> v2
-            VTuple3 v1 v2 v3 -> v2
-        in (v',os,m')
+        (vptr,os,m') = interpX x m
+        (VArray _ n) = getFromHeap vptr m
+        in (VInt n,os,m')
+
+interpVGetter :: Value -> State -> (Value,[IO Value],State)
+interpVGetter (VGetter label i [x]) m = let
+    (v,os,m') = interpX x m
+    errMsg = "Failed to get `" ++ label ++ "` member."
+    in case v of
+        vptr@(VPtr _) -> case getFromHeap vptr m' of
+            (VObj label' mbs) ->
+                if label == label' then (mbs !! i,os,m') else
+                    error errMsg
+            _ -> error errMsg
+        _ -> error errMsg
+
+interpVSetter :: Value -> State -> (Value,[IO Value],State)
+interpVSetter (VSetter label i [x1,x2]) m = let
+    -- obj to search in 
+    (v1,os,m') = interpX x2 m
+    -- item to search for
+    (v2,os',m'') = interpX x1 m'
+    errMsg = "Failed to set `" ++ label ++ "` member."
+    in case v1 of
+        vptr@(VPtr _) -> case getFromHeap vptr m'' of
+            (VObj label' mbs) ->
+                if label == label' then let
+                    mbs' = updateList mbs v2 i
+                    obj' = (VObj label' mbs')
+                    m''' = mapToHeap vptr obj' m''
+                    in (VVoid,os++os',m''')
+                else
+                    error errMsg
+            _ -> error errMsg
+        _ -> error errMsg
+    
 
 interpShow :: Expr -> State -> (Value,[IO Value],State)
 interpShow x m = 
@@ -762,9 +833,9 @@ interpShow x m =
             VFloat f    -> show f
             VChar c     -> show c
             VBool b     -> show b
-            VTuple2 v1 v2  -> 
+            VTuple [v1, v2]  -> 
                 "(" ++ aux v1 m ++ ", " ++ aux v2 m ++ ")"
-            VTuple3 v1 v2 v3 -> 
+            VTuple [v1,v2,v3] -> 
                 "(" ++ aux v1 m ++ ", " ++ aux v2 m ++ ", " ++ aux v3 m ++ ")"
             VArray a n  -> showArray a n 0
             VPtr ptr    -> aux (getFromHeap (VPtr ptr) m) m
@@ -797,14 +868,23 @@ interpP px v m = case px of
         in case ptrToObj v m of
             Just (VObj label' mbs) ->
                 if label /= label' then Nothing else
-                    interpPs (reverse pxs) (map snd mbs) m
+                    interpPs (reverse pxs) mbs m
             _ -> Nothing
     PatOp2 op px1 px2 -> case getFromState op m of
         -- lookup op in state
         (VCons label _ []) -> case ptrToObj v m of
             Just (VObj label' mbs) ->
-                interpPs [px1,px2] (map snd mbs) m
+                interpPs [px1,px2] mbs m
             _ -> Nothing
+    PatTuple pxs -> case ptrToTuple v m of
+        Just (VTuple vs) -> interpPs pxs vs m
+        _ -> Nothing
+    PatArray pxs -> case ptrToArrayValues v m of
+        Just vs -> interpPs pxs vs m
+        _ -> Nothing
+    PatString s -> case ptrToArrayValues v m of
+        Just vs -> interpPs (map PatChar s) vs m
+        _ -> Nothing
     PatVar "_" -> Just m
     PatVar label -> if isConsVar label then
         case ptrToObj v m of
@@ -822,6 +902,16 @@ interpP px v m = case px of
             obj@(VObj _ _) -> Just obj
             _ -> Nothing
         _ -> Nothing
+    ptrToTuple v m = case v of
+        vptr@(VPtr _) -> case getFromHeap vptr m of
+            tp@(VTuple _) -> Just tp
+            _ -> Nothing
+        _ -> Nothing
+    ptrToArrayValues v m = case v of
+        vptr@(VPtr _) -> case getFromHeap vptr m of
+            (VArray a n) -> Just $ arrayToList a n
+            _ -> Nothing
+        _ -> Nothing
 
 interpPs :: [PatExpr] -> [Value] -> State -> Maybe State
 interpPs [] [] m = Just m
@@ -831,14 +921,6 @@ interpPs (px:pxs) (v:vs) m = case interpP px v m of
     Just m' -> interpPs pxs vs m'
     Nothing -> Nothing
     
-
--- turns a VTuple into a list of values
-tupleToList :: Value -> [Value]
-tupleToList v = case v of
-    VTuple2 v1 v2 -> 
-        [v1,v2]
-    VTuple3 v1 v2 v3 -> 
-        [v1,v2,v3]
 
 -- converts (PatAp (PatAp (Var "Cons") (PatInt 3)) (Var "Null")) ->
 --  ("Cons", [(PatInt 3), (Var "Null")])

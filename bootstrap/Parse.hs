@@ -37,6 +37,7 @@ data Stmt =
     | While Expr Seq
     | Case Expr [CaseStmtElem]
     | Dec Expr
+    | DecAssign Expr Expr
     | Assign Expr Expr
     | Return Expr
     deriving (Show, Eq, Ord)
@@ -68,6 +69,8 @@ data PatExpr =
     | PatString String
     | PatChar Char
     | PatBool Bool
+    | PatArray [PatExpr]
+    | PatTuple [PatExpr]
     | PatAp PatExpr PatExpr
     -- ":" operator probably
     | PatOp2 String PatExpr PatExpr
@@ -76,8 +79,11 @@ data PatExpr =
     deriving (Show, Eq, Ord)
 
 type Program = Seq
---                value cons label   field label  type expr
-type DTypeElem = (String,           [(String,     Expr)])
+--                vcons label       
+type DTypeElem = (String,           
+--     field getter   field setter      type expr
+    [((Maybe String,  Maybe String),    Expr)]
+    )
 
 --                   pattern expr     pattern result
 type CaseStmtElem = (PatExpr,         Seq)
@@ -316,7 +322,9 @@ patExpr = try asPattern
       <|> buildExpressionParser patOperators patTerm
 
 patTerm = 
-    parens patExpr
+        try patTupleLiteral
+    <|> parens patExpr
+    <|> patArrayLiteral
     <|> liftM PatString stringLiteral
     <|> liftM PatChar charLiteral
     <|> try (reserved "True" >> return (PatBool True))
@@ -330,6 +338,19 @@ asPattern = do
     reservedOp "@"
     px <- patExpr 
     return $ AsPattern label px
+
+patArrayLiteral = do
+    reservedOp "["
+    xs <- patExpr `sepBy` (reservedOp ",")
+    reservedOp "]"
+    return $ PatArray xs
+
+patTupleLiteral = parens $ do
+    -- we must have at least one ","
+    x1 <- patExpr
+    reservedOp ","
+    xs <- patExpr `sepBy1` (reservedOp ",")
+    return $ PatTuple (x1:xs)
 
 
 
@@ -358,6 +379,7 @@ statement =
     <|> ifStmt
     <|> whileStmt
     <|> caseStmt
+    <|> try decAssign
     <|> decStmt
     <|> returnStmt
     <|> fnStmt
@@ -378,11 +400,17 @@ decStmt = do
     semi
     return $ Dec vs
 
+decAssign = do
+    reserved "dec"
+    s <- plainAssignStmt
+    let (Assign x1 x2) = s
+    return $ DecAssign x1 x2
+
 returnStmt = do
     reserved "return"
-    e <- expr
+    x <- expr
     semi
-    return $ Return e
+    return $ Return x
 
 assignStmt = 
         try plainAssignStmt 
@@ -460,17 +488,23 @@ dataStmt = do
 
 dataStmtRHSElem = do
     label <- identifier
-    -- could be none, so use `sepBy`
-    elems <- (do
-        label' <- identifier
+    elems <- many $ parens (do
+        -- {l1, l2} or {l1} or {}
+        es <- braces $ try (do
+            l1 <- identifier 
+            reservedOp ","
+            l2 <- identifier
+            return (Just l1, Just l2)
+            ) <|> try (do
+            l1 <- identifier
+            return (Just l1, Nothing)
+            ) <|> return (Nothing, Nothing)
         reservedOp "::"
         tx <- typeExpr
-        return $ (label', tx)
-        ) `sepBy` (reservedOp ",")
+        return $ (es, tx)
+        ) 
     return $ (label, elems)
-    
-
-
+ 
 
 whileStmt = do
     reserved "While"
@@ -489,7 +523,7 @@ ifStmt1 = do
 
 ifStmt2 = do
     reserved "If"
-    e       <- parens expr
+    e       <- expr
     b       <- block
     return $ If e b (Seq [])
 

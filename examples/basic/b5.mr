@@ -4,8 +4,8 @@ fn map f xs {
     dec i;
     i <- 0;
 
-    While (i /= xs.length) {
-        xs ! i <- f (xs ! i);
+    While i /= length xs {
+        xs ! i <- f $ xs ! i;
         i +< 1;
     }
 }

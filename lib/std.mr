@@ -1,12 +1,16 @@
 #include <list.mr>
 
-data Maybe a    := Yes val :: a  | No;
-data Either a b := Left val :: a | Right val :: b;
+data Maybe a := 
+      Yes ({getMaybe} :: a)  
+    | No
+;
+data Either a b := 
+      Left ({getLeft} :: a) 
+    | Right ({getRight} :: b)
+;
 
 -- generic heap reference
-data Ref a      := Ref val :: a;
-fn deref ref    {return ref.val;}
-fn mutate ref v {ref.val <- v;}
+data Ref a := Ref ({deref,mutate} :: a);
 
 -- data Bool       := True | False; 
 
@@ -40,7 +44,7 @@ fn map f a {
     dec i;
     i <- 0;
 
-    While (i /= a.length) {
+    While (i /= length a) {
         a ! i <- f (a ! i);
         i +< 1;
     }
@@ -52,9 +56,9 @@ fn map f a {
 fn gmap f a {
     dec i, ret;
     i <- 0;
-    ret <- Array (a.length);
+    ret <- Array (length a);
 
-    While (i /= a.length) {
+    While (i /= length a) {
         ret ! i <- f (a ! i);
         i +< 1;
     }
@@ -69,7 +73,7 @@ fn vmap f a {
     dec i;
     i <- 0;
 
-    While (i /= a.length) {
+    While (i /= length a) {
         f $ a ! i;
         i +< 1;
     }
@@ -78,16 +82,16 @@ fn vmap f a {
 --append :: Array a -> Array a -> Array a;
 fn append a1 a2 {
     dec ret, i;
-    ret <- Array (a1.length + a2.length);
+    ret <- Array (length a1 + length a2);
     i <- 0;
 
-    While (i /= a1.length) {
+    While (i /= length a1) {
         ret ! i <- a1 ! i;
         i     +< 1;
     }
 
-    While (i /= ret.length) {
-        ret ! i <- a2 ! (i-a1.length);
+    While (i /= length ret) {
+        ret ! i <- a2 ! (i - length a1);
         i     +< 1;
     }
 
@@ -97,11 +101,11 @@ fn append a1 a2 {
 --filter :: (a -> Bool) -> Array a -> Array a;
 fn filter f a {
     dec ret, i, reti, ret2;
-    ret     <- Array a.length;
+    ret     <- Array $ length a;
     i       <- 0;
     reti    <- 0;
 
-    While (i /= a.length) {
+    While (i /= length a) {
         If (f $ a ! i) {
             ret ! reti <- a ! i;
             reti     +< 1;
@@ -117,7 +121,6 @@ fn filter f a {
     return ret2;
 }
 
--- TODO: make is a (i1, i2) tuple in the definition
 --slice :: Array a -> (Int, Int) -> Array a
 fn slice a is {
     dec ret, reti, i1, i2;
@@ -125,7 +128,7 @@ fn slice a is {
     i2 <- snd is;
     reti <- 0;
 
-    If (i1 > i2 || (i2 - i1) > a.length) {
+    If (i1 > i2 || (i2 - i1) > length a) {
         error $ "Invalid range for slice: [" 
             ++ show i1 ++ " " ++ show i2 ++ ")";
     }
@@ -160,7 +163,18 @@ fn putLn s {printChar `vmap` s; printChar '\n';}
 --- Structures, Tuples
 --
 
--- TODO: pattern matching
+fn fst tp {return
+    case tp {
+        (x,_) -> x;
+    }
+;}
+
+fn snd tp {return
+    case tp {
+        (_,y) -> y;
+    }
+;}
+
 -- uncurry :: (a -> b -> c) -> (a, b) -> c;
 fn uncurry f xy {return
     f (fst xy) (snd xy)
@@ -171,10 +185,49 @@ fn curry f x y {return
     f (x,y)
 ;}
 
-fn main {
+fn main args {
     lprint $ lfilter odd $ 1:2:3:4:5:Null;
     printChar '\n';
 
+    dec v;
+    v <- if length args = 0 then No else Yes $ args ! 0;
+
+    Case v {
+        Yes s -> {putLn s;}
+        No -> {putLn "nope";}
+    }
+
+    @ fst (1,2);
+    @ snd (1,2);
+
+    @ case [1,2,3] {
+        [x,y,3] -> x-y; 
+    };
+
+    putLn $ case "abc" {
+        a@[x,y,'c'] -> [y,x] `append` a; 
+    };
+
+    putLn $ case "abc" {
+        s@"aba" -> ['a'] ++ s;
+        s@"abb" -> ['b'] ++ s;
+        s@"abc" -> ['c'] ++ s;
+        s@"abd" -> ['d'] ++ s;
+    };
+
+    dec xs;
+    xs <- 1:2:3:Null;
+    -- changes `1:2:3:Null` to `1:2:4:Null`
+    lsetVal (lgetNext $ lgetNext xs) 4; 
+    lprint xs;
+    putLn "";
+
+    -- changes `1:2:4:Null` to `1:2:5:Null`
+    Case xs {
+        1:2:x -> {lsetVal x 5;}
+    }
+    lprint xs;
+    putLn "";
 
     return 0;
 }

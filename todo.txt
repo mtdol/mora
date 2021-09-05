@@ -2,14 +2,14 @@
 ```
 dec a;
 a <- 3;
-{dec a; a <- 2;}
+{dec a <- 2;}
 -- prints 3
 @a;
 ```
 
 - variable declaration scope
 ```
-{dec a; a <- 3; @a {-okay-}}
+{dec a <- 3; @a; {-okay-}}
 -- illegal
 @a;
 ```
@@ -21,25 +21,22 @@ perhaps use static var renaming for this
 fn f x {
     fn g y {
         ...
-    ...
     }
+    ...
 }
 ```
 perhaps lift the sub-procs to the global space (to allow recursion)
     and then do static variable renaming
 
 
-- case expr/statements 
-
-
 - allow file manipulation, probably with file handles
 
 
-- what should we do about in-place modifications of structures in regards to
-    the type system.
-If I have an `Array Int` `a`, I should not (presumably) be able to go
-`a ! 2 <- 'c'`, since that would make it a mixed `Int` `Char` array.
 
+
+
+
+future: 
 
 - allow absolute imports
 ```

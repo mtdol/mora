@@ -1,4 +1,7 @@
-data List a := Cons val :: a, next :: List a | Null;
+data List a := 
+      Cons ({lgetVal, lsetVal} :: a) ({lgetNext, lsetNext} :: List a)
+    | Null
+;
 
 op : := Cons;
 
@@ -8,14 +11,14 @@ fn head v {return
     if null v then 
         error "`head`: Cannot deref Null."
     else
-        v.val
+        lgetVal v
 ;}
 
 fn tail v {return
     if null v then 
         error "`tail`: Cannot deref Null."
     else
-        v.next
+        lgetNext v
 ;}
 
 fn lprint xs {

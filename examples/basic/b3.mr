@@ -2,8 +2,8 @@ fn printArgs {
     dec i;
     i <- 0;
 
-    While (i /= argsG.length) {
-        @ argsG ! i;
+    While i /= length argsG {
+        putLn $ argsG ! i;
         i +< 1;
     }
 }

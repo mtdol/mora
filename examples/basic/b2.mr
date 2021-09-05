@@ -2,11 +2,11 @@ fn f x y {
     dec z;
     z <- 0;
     
-    If (y < 0) {
+    If y < 0 {
         y <- 0;
     }
 
-    While (y /= 0) {
+    While y /= 0 {
         z +< x;
         y -< 1;
     }

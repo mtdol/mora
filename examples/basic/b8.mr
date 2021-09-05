@@ -1,0 +1,26 @@
+fn main {
+    putLn "";
+    @ x; -- 21
+    @ y; -- 20
+
+    f();
+    
+    putLn "";
+    @x; -- 0
+
+    return 0;
+}
+
+dec x <- 3;
+dec y <- 20;
+
+While x < y {
+    @ x; -- 3 5 7 ...
+    x +< 2;
+}
+
+
+fn f {
+    x <- 0;
+    dec x <- 1; -- shouldn't affect anything global
+}
