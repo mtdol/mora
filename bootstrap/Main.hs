@@ -6,7 +6,7 @@ import qualified Data.Array as Array
 
 import Parse
 import Preprocessor
---import WellFormed
+import WellFormed
 import Interp
 
 main :: IO ()
@@ -35,8 +35,11 @@ run im text cf args = do
         else text
     text'' <- process text' 0 cf
     let p = readProg text''
-    let p' = if True then p else error "Malformed."
-   
+    -- well formed check
+    let p' = case wellFormed p of {
+        Right True -> p;
+        Left errMsg -> error errMsg;
+        }
     if im then
         let (os,m) = interpInteractive p'
         in printValues os m

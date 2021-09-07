@@ -2,7 +2,7 @@ fn main {
     putLn "";
     @ x; -- 21
     @ y; -- 20
-
+    
     f();
     
     putLn "";

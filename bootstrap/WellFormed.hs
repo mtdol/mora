@@ -5,61 +5,98 @@ wellFormed
 
 import Parse
 import qualified Data.Set as Set
-
-wellFormed :: Seq -> Bool
-wellFormed s = 
-    syntax s -- && vars s Set.empty
+import Interp (preloadedLabels)
 
 
-syntax :: Seq -> Bool
-syntax (Seq ss) = 
-    and (map syntaxS ss)
+--
+-- Utilites
+--
 
-syntaxS :: Stmt -> Bool
-syntaxS (Stmt x) = syntaxX x
-syntaxS (If x ss1 ss2) = 
-    syntaxX x && syntax ss1 && syntax ss2
-syntaxS (Fn _ _ ss) = syntax ss 
-syntaxS (While x ss) = 
-    syntaxX x && syntax ss  
-syntaxS (Assign x1 x2) = 
-    syntaxX x1 && syntaxX x2
-syntaxS (Return x) = syntaxX x
-syntaxS (NOP) = True
-syntaxS (Dec x) = aux x where 
-    aux x = case x of
-        (Var _)   -> True
-        (Op2 "::" x _) -> aux x
-        (Op2 "," x1 x2) -> aux x1 && aux x2
-        _         -> False
+type Defs = Set.Set Label
 
-syntaxX :: Expr -> Bool
-syntaxX _ = True
+emptyDefs = Set.empty
 
-{-
-vars :: Stmt -> Set.Set String -> Bool
-vars (Seq ss) c = 
-    and (map (\s -> vars s c) ss)
-vars (Stmt x) c = varsX x c
-vars (If x s1 s2) c = 
-    varsX x c && vars s1 c && vars s2 c
-vars (Fn n ps b) c = True -- TODO
-vars (While x s) c =
-    varsX x c && vars s c
-vars (Dec x) c = True -- TODO
-vars (Assign x1 x2) c = True -- TODO
-vars (Return x) c = varsX x c
+accept :: Either String Bool
+accept = Right True
+reject :: String -> Either String Bool
+reject msg = Left msg
 
-varsX :: Expr -> Set.Set String -> Bool
-varsX (PInt _) _ = True
-varsX (PString _) _ = True
-varsX (PBool _) _ = True
-varsX (Var s) c = s `Set.member` c
-varsX (Op2 "." x1 x2) c = True -- TODO
-varsX (Ap x1 x2) c = varsX x1 c && varsX x2 c
-varsX (Ifx x1 x2 x3) c = 
-    varsX x1 c && varsX x2 c && varsX x3 c
-varsX (Op2 _ x1 x2) c = 
-    varsX x1 c && varsX x2 c
-varsX (Op1 _ x) c = varsX x c
--}
+
+-- gets all labels from a `Dec` statement
+-- ignore type declarations
+getDecLabels (Op2 "::" x _) = getDecLabels x
+getDecLabels (Op2 "," x1 x2) = getDecLabels x1 ++ getDecLabels x2
+getDecLabels (Var label) = [label]
+
+getDuplicates xs = aux xs Set.empty
+ where
+    aux [] _ = []
+    aux (x:xs) m | x `Set.member` m = x : aux xs m
+    aux (x:xs) m = aux xs (x `Set.insert` m)
+
+
+--
+-- Main
+--
+
+-- returns `Left errMsg` if the Expr is not well formed, else `Right True`
+wellFormed :: Program -> Either String Bool
+wellFormed p = do
+    -- no duplicate var declarations in a block
+    dupDecs p emptyDefs
+    -- all vars must be declared and defined before use
+    topLevel p
+
+-- `Left errMsg` if there are duplicate declarations, otherwise `Right True`
+dupDecs :: Seq -> Defs -> Either String Bool
+dupDecs (Seq ((Dec x):ss)) m = do
+    let labels = getDecLabels x
+    -- no duplicates allowed
+    let dups = getDuplicates labels
+    if not $ null dups 
+        then genDupErr $ head dups
+        else accept
+    contains m labels
+    let m' = foldr Set.insert m labels
+    dupDecs (Seq ss) m'
+ where 
+    contains :: Defs -> [Label] -> Either String Bool
+    contains _ [] = accept
+    contains m (label:labels) = 
+        if label `Set.member` m 
+            then genDupErr label else contains m labels
+dupDecs (Seq ((DecAssign label _):ss)) m =
+    if label `Set.member` m then
+        genDupErr label
+    else dupDecs (Seq ss) (label `Set.insert` m)
+dupDecs (Seq ((Block ss1):ss)) m = do 
+    dupDecs ss1 emptyDefs
+    dupDecs (Seq ss) m
+dupDecs (Seq ((If _ ss1 ss2):ss)) m = do 
+    dupDecs ss1 emptyDefs
+    dupDecs ss2 emptyDefs
+    dupDecs (Seq ss) m
+dupDecs (Seq ((While _ ss1):ss)) m = do 
+    dupDecs ss1 emptyDefs
+    dupDecs (Seq ss) m
+-- ok if the function label is redefined in the function body
+dupDecs (Seq ((Fn flabel fps fss):ss)) m = do
+    let dups = getDuplicates fps
+    if not $ null dups 
+        then reject $ "Duplicate function parameter `" ++ head dups 
+            ++ "` for function `" ++ flabel ++ "`."
+        else accept
+    dupDecs fss (Set.fromList fps)
+    dupDecs (Seq ss) m
+dupDecs (Seq (_:ss)) m = dupDecs (Seq ss) m
+dupDecs (Seq []) _ = accept      
+ where
+genDupErr label = 
+    reject $ "Duplicate declaration for `" ++ label ++ "`."
+
+-- ensures that the top-level is well-formed
+topLevel :: Seq -> Either String Bool
+topLevel (Seq []) = accept
+topLevel (Seq ((Dec _):ss)) =
+    reject $ "No declarations allowed on the top-level without an assignment."
+topLevel (Seq (s:ss)) = topLevel (Seq ss)

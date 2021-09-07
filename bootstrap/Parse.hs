@@ -7,6 +7,7 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
 
 import qualified Data.Char as Char
+import qualified Data.Set as Set
 
 data Seq = Seq [Stmt]
     deriving (Show, Eq, Ord)
@@ -17,8 +18,8 @@ data Stmt =
     | Stmt Expr
     | If Expr Seq Seq
     --   Name   Params   Body
-    | Fn String [String] Seq 
-    | Op String String
+    | Fn Label [Label] Seq 
+    | Op Label Label
     -- `List a := Cons val :: a, next :: List a | Null`
     -- -> DType "List" [(Var "a")] Elems;
     -- Elems -> 
@@ -33,11 +34,11 @@ data Stmt =
     --  -> TypeAlias "String" (Ap (Var "List") (Var "Char"))
     --
     --
-    | TypeAlias String Expr
+    | TypeAlias Label Expr
     | While Expr Seq
     | Case Expr [CaseStmtElem]
     | Dec Expr
-    | DecAssign Expr Expr
+    | DecAssign Label Expr
     | Assign Expr Expr
     | Return Expr
     deriving (Show, Eq, Ord)
@@ -51,15 +52,15 @@ data Expr =
     | PBool Bool
     | PArray [Expr]
     | PTuple [Expr]
-    | Dot Expr Expr
+    | PVoid
     | Ap Expr Expr
     | ApNull Expr 
     | Ifx Expr Expr Expr -- If expr
     --       params   body
-    | Lambda [String] Seq
+    | Lambda [Label] Seq
     | CaseX Expr [CaseExprElem]
-    | Op1 String Expr
-    | Op2 String Expr Expr
+    | Op1 Label Expr
+    | Op2 Label Expr Expr
     deriving (Show, Eq, Ord)
 
 data PatExpr = 
@@ -69,6 +70,7 @@ data PatExpr =
     | PatString String
     | PatChar Char
     | PatBool Bool
+    | PatVoid
     | PatArray [PatExpr]
     | PatTuple [PatExpr]
     | PatAp PatExpr PatExpr
@@ -80,14 +82,16 @@ data PatExpr =
 
 type Program = Seq
 --                vcons label       
-type DTypeElem = (String,           
+type DTypeElem = (Label,           
 --     field getter   field setter      type expr
-    [((Maybe String,  Maybe String),    Expr)]
+    [((Maybe Label,  Maybe Label),    Expr)]
     )
 
 --                   pattern expr     pattern result
 type CaseStmtElem = (PatExpr,         Seq)
 type CaseExprElem = (PatExpr,         Expr)
+
+type Label      = String
 
 -- vars like "Array" and "Cons" and "Null"
 isConsVar :: String -> Bool
@@ -114,6 +118,7 @@ def =
                                       , "False"
                                       , "Case"
                                       , "case"
+                                      , "Void"
                                       ]
            , Token.reservedOpNames  = [ "+"
                                       , "+."
@@ -189,31 +194,38 @@ whiteSpace  = Token.whiteSpace  lexer -- parses whitespace
 dot         = Token.dot         lexer 
 symbol      = Token.symbol      lexer
 
+
 -- ops that can be repurposed
-op = try (symbol "@")
- <|> try (symbol "&&")
- <|> try (symbol "&")
- <|> try (symbol "||")
- <|> try (symbol "|")
- <|> try (symbol "^^")
- <|> try (symbol "^")
- <|> try (symbol ":")
- <|> try (symbol "++")
- <|> try (symbol "//")
- <|> try (symbol "==")
- <|> try (symbol "/==")
- <|> try (symbol "!!")
- <|> try (symbol "$$")
- <|> try (symbol ">>=")
- <|> try (symbol ">>")
- <|> try (symbol "<@>")
- <|> try (symbol "<$>")
- <|> try (symbol "</>")
- <|> try (symbol "<*>")
- <|> try (symbol "<:>")
- <|> try (symbol "<+>")
- <|> try (symbol "<|>")
- <|> try (symbol "<&>")
+customOps = [
+      "@"
+    , "&&"
+    , "&"
+    , "||"
+    , "|"
+    , "^^"
+    , "^"
+    , ":"
+    , "++"
+    , "//"
+    , "=="
+    , "/=="
+    , "!!"
+    , "$$"
+    , ">>="
+    , ">>"
+    , "<@>"
+    , "<$>"
+    , "</>"
+    , "<*>"
+    , "<:>"
+    , "<+>"
+    , "<|>"
+    , "<&>"
+    ]
+
+customOpsSet = Set.fromList customOps
+
+customOp = choice (map symbol customOps)
 
 operators = [  
                [Infix   (reservedOp ""  >> return (Ap)) AssocLeft,
@@ -329,6 +341,7 @@ patTerm =
     <|> liftM PatChar charLiteral
     <|> try (reserved "True" >> return (PatBool True))
     <|> try (reserved "False" >> return (PatBool False))
+    <|> try (reserved "Void" >> return (PatVoid))
     <|> try (liftM PatFloat float)
     <|> liftM PatVar identifier
     <|> liftM PatInt integer
@@ -402,13 +415,16 @@ decStmt = do
 
 decAssign = do
     reserved "dec"
-    s <- plainAssignStmt
-    let (Assign x1 x2) = s
-    return $ DecAssign x1 x2
+    s <- do 
+        label <- identifier
+        reservedOp "<-"
+        x <- expr
+        return $ DecAssign label x
+    return s
 
 returnStmt = do
     reserved "return"
-    x <- expr
+    x <- option PVoid expr
     semi
     return $ Return x
 
@@ -463,7 +479,7 @@ fnStmt = do
 
 opStmt = do
     reserved "op"
-    opname <- op
+    opname <- customOp
     reservedOp ":="
     fname  <- identifier
     semi
@@ -608,6 +624,7 @@ term =
     <|> liftM PChar charLiteral
     <|> try (reserved "True" >> return (PBool True))
     <|> try (reserved "False" >> return (PBool False))
+    <|> try (reserved "Void" >> return (PVoid))
     <|> try (liftM PFloat float)
     <|> var
     <|> liftM PInt integer

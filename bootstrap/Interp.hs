@@ -64,7 +64,6 @@ interpToBool x m    = interpTo vgetBool x m
 interpToChar x m    = interpTo vgetChar x m
 interpToFloat x m   = interpTo vgetFloat x m
 
-type Label      = String
 type Context    = Map.Map Label Value
 type Ptr        = Integer
 --                 heap itself        the next fresh ptr
@@ -253,17 +252,20 @@ makePreloadedFn name arity =
     let as = foldr (\n acc -> ("a"++(show n)) : acc) [] [1..arity] in
         (VFn (Just name) as [] (Left name))
     
+--                  name   arity  
+preloadedLabels :: [(Label,Int)]
+preloadedLabels = [
+      ("printChar", 1)
+    , ("show",      1)
+    , ("error",     1)
+    , ("Array",     1)
+    , ("length",    1)
+  ]
 
 -- loads preloaded functions into a given state
 mapPreloaded :: State -> State
 mapPreloaded m = let 
-    fs = [ 
-          makePreloadedFn "printChar"   1
-        , makePreloadedFn "show"        1
-        , makePreloadedFn "error"       1
-        , makePreloadedFn "Array"       1
-        , makePreloadedFn "length"      1
-        ]
+    fs = map (\(label,arity) -> makePreloadedFn label arity) preloadedLabels
     in foldr (\f@(VFn _ _ _ (Left s)) acc -> mapToGlobalContext s f acc)
         m fs
 
@@ -356,7 +358,7 @@ makeSettersGetters mbs label m = aux mbs label 0 m
 --                                   io stream    memory
 interpGlobals :: Program -> State -> ([IO Value], State)
 interpGlobals (Seq []) m = ([], m)
-interpGlobals (Seq ((DecAssign (Var label) x2):ss)) m = let
+interpGlobals (Seq ((DecAssign label x2):ss)) m = let
     (v2,os,m') = interpX x2 m
     (c',g',h') = m'
     g'' = Map.insert label v2 g'
@@ -407,7 +409,7 @@ interpS (Stmt x) m =
         (Nothing,os,m')
 interpS (Block ss) m = interpSeq ss m
 interpS (NOP) m    = (Nothing,[],m)
-interpS (DecAssign (Var label) x2) m = let
+interpS (DecAssign label x2) m = let
     (v2,os,m') = interpX x2 m
     (c',g',h') = m'
     c'' = Map.insert label v2 c'
@@ -582,6 +584,7 @@ interpX (PBool b) m     = (VBool $ b,[],m)
 interpX (PInt i) m      = (VInt $ i,[],m)
 interpX (PChar c) m     = (VChar $ c,[],m)
 interpX (PFloat f) m    = (VFloat $ f,[],m)
+interpX (PVoid) m       = (VVoid,[],m)
 -- disregard type annotations
 interpX (Op2 "::" x _) m = interpX x m
 interpX (Var id) m = (getFromState id m,[],m)
@@ -862,6 +865,9 @@ interpP px v m = case px of
         _ -> Nothing
     PatBool b -> case v of
         VBool b' -> if b==b' then Just m else Nothing
+        _ -> Nothing
+    PatVoid -> case v of
+        VVoid -> Just m
         _ -> Nothing
     pap@(PatAp _ _) -> let
         (label,pxs) = patApToList pap

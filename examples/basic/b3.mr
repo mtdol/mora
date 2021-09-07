@@ -8,7 +8,7 @@ fn printArgs {
     }
 }
 
-dec argsG;
+dec argsG <- [];
 
 fn main args {
     argsG <- args;

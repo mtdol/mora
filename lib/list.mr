@@ -7,6 +7,9 @@ op : := Cons;
 
 fn null v {return v = Null;}
 
+--lsingleton :: a -> List a;
+fn lsingleton x {return Cons x Null;}
+
 fn head v {return
     if null v then 
         error "`head`: Cannot deref Null."
@@ -21,12 +24,31 @@ fn tail v {return
         lgetNext v
 ;}
 
-fn lprint xs {
-    Case xs {
-        x:xs -> {print x; put " : "; lprint xs;}
-        Null -> {put "Null";}
+fn maybeHead v {return
+    case v {
+        Null -> No;
+        x:_ -> Yes x;
     }
-}
+;}
+
+fn maybeTail v {return
+    case v {
+        Null -> No;
+        _:xs -> Yes xs;
+    }
+;}
+
+--lappend :: List a -> List a -> List a;
+fn lappend xs ys {return
+    -- `,` is tuple constructor
+    -- `case` is an expression, `Case` is a statement
+    case (xs, ys) {
+        (Null, ys) -> 
+            ys;
+        ((x:xs), ys) ->
+            Cons x (xs `lappend` ys);
+    }
+;}
 
 fn lfilter f xs {return
     case xs {
@@ -34,3 +56,68 @@ fn lfilter f xs {return
         Null -> Null;
     }
 ;}
+
+-- filters the given list in place and returns a pointer to the new head
+--  of the list
+{-
+fn lfilterInPlace f xs {
+    dec t, xsBackup;
+
+    If null xs {return Null;}
+    If null $ lgetNext xs {
+        return if f $ lgetVal xs then xs else Null;
+    }
+
+    xsBackup <- xs;
+
+    While not $ null $ lgetNext xs {
+        -- skip filtered list elem
+        If not $ f $ lgetVal xs {
+            t <- lgetNext $ lgetNext xs;
+            lsetNext xs t;
+            xs <- t;
+        } Else {
+            xs <- lgetNext xs;
+        }
+    }
+}
+-}
+
+--lreverse :: List a -> List a;
+fn lreverse xs {return
+    case xs {
+        Null -> Null;
+        x:xs -> (lreverse xs) `lappend` (lsingleton x);
+    }
+;}
+
+-- generative map
+--lgmap :: (a -> b) -> List a -> List b;
+fn lgmap f xs {return
+    case xs {
+        Null -> Null;
+        x:xs -> f x : f `lgmap` xs;
+    }
+;}
+
+-- in-place map
+--lmap :: (a -> b) -> List a -> Void;
+fn lmap f xs {
+    Case xs {
+        Null -> {}
+        xs_@x:xs -> {
+            lsetVal xs_ $ f x;
+            lmap f xs;
+        }
+    }
+}
+
+fn lprint xs {
+    Case xs {
+        x:xs -> {print x; put " : "; lprint xs;}
+        Null -> {put "Null";}
+    }
+}
+
+fn lprintLn xs {lprint xs; putLn "";}
+

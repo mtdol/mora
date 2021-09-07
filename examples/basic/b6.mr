@@ -1,7 +1,6 @@
-dec a;
-a <- 3;
+dec a <- 3;
 
-{dec a; a <- a + 1; @ a;}
+{dec a <- a + 1; @ a;}
 
 @ a;
 
@@ -9,7 +8,7 @@ fn main {
     dec x;
     x <- 7;
     
-    {dec x; x <- x + 1; @x;}
+    {dec x <- x + 1; @x;}
 
     @ x;
 
