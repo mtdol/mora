@@ -38,6 +38,14 @@ fn maybeTail v {return
     }
 ;}
 
+fn lindex xs i {return
+    case xs {
+        Null -> error "lindex: Index out of bounds.";
+        x:xs -> 
+            if i = 0 then x else lindex xs (i-1);
+    }
+;}
+
 --lappend :: List a -> List a -> List a;
 fn lappend xs ys {return
     -- `,` is tuple constructor
@@ -57,39 +65,18 @@ fn lfilter f xs {return
     }
 ;}
 
--- filters the given list in place and returns a pointer to the new head
---  of the list
-{-
-fn lfilterInPlace f xs {
-    dec t, xsBackup;
-
-    If null xs {return Null;}
-    If null $ lgetNext xs {
-        return if f $ lgetVal xs then xs else Null;
-    }
-
-    xsBackup <- xs;
-
-    While not $ null $ lgetNext xs {
-        -- skip filtered list elem
-        If not $ f $ lgetVal xs {
-            t <- lgetNext $ lgetNext xs;
-            lsetNext xs t;
-            xs <- t;
-        } Else {
-            xs <- lgetNext xs;
-        }
-    }
-}
--}
-
+-- TODO: test this
 --lreverse :: List a -> List a;
-fn lreverse xs {return
-    case xs {
-        Null -> Null;
-        x:xs -> (lreverse xs) `lappend` (lsingleton x);
-    }
-;}
+fn lreverse xs {
+    fn aux xs acc {return
+        case xs {
+            Null -> acc;
+            x:xs -> aux xs (x:acc);
+        }
+    ;}
+
+    return aux xs Null;
+}
 
 -- generative map
 --lgmap :: (a -> b) -> List a -> List b;
@@ -112,6 +99,46 @@ fn lmap f xs {
     }
 }
 
+fn lzip xs ys {return
+    case (xs,ys) {
+        (Null,_) -> Null;
+        (_,Null) -> Null;
+        ((x:xs),(y:ys)) -> (x,y) : lzip xs ys;
+    }
+;}
+
+fn llength xs {return
+    case xs {
+        Null -> 0;
+        _:xs -> 1 + llength xs;
+    }   
+;}
+
+fn arrayToList a {
+    dec i <- length a - 1;
+    dec ret <- Null;
+
+    While i /= -1 {
+        ret <- a ! i : ret;
+        i -< 1;
+    }
+
+    return ret;
+}
+
+fn listToArray xs {
+    dec ret <- Array $ llength xs;
+    dec i <- 0;
+
+    While xs /= Null {
+        ret ! i <- head xs;
+        i +< 1;
+        xs <- tail xs;
+    }
+
+    return ret;
+}
+
 fn lprint xs {
     Case xs {
         x:xs -> {print x; put " : "; lprint xs;}
@@ -120,4 +147,3 @@ fn lprint xs {
 }
 
 fn lprintLn xs {lprint xs; putLn "";}
-

@@ -7,6 +7,7 @@ import qualified Data.Array as Array
 import Parse
 import Preprocessor
 import WellFormed
+import Desugar
 import Interp
 
 main :: IO ()
@@ -40,12 +41,13 @@ run im text cf args = do
         Right True -> p;
         Left errMsg -> error errMsg;
         }
+    let p'' = desugar p'
     if im then
-        let (os,m) = interpInteractive p'
+        let (os,m) = interpInteractive p''
         in printValues os m
     -- file mode
     else 
-        let (ret,os,m) = interp p' args 
+        let (ret,os,m) = interp p'' args 
         in printValues os m >> 
             if ret /= (VInt 0) then 
                 error "Non-zero exit status." 

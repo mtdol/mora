@@ -1,0 +1,46 @@
+fn main args {
+    lprint $ lfilter odd $ 1:2:3:4:5:Null;
+    printChar '\n';
+
+    dec v;
+    v <- if length args = 0 then No else Yes $ args ! 0;
+
+    Case v {
+        Yes s -> {putLn s;}
+        No -> {putLn "nope";}
+    }
+
+    @ fst (1,2);
+    @ snd (1,2);
+
+    @ case [1,2,3] {
+        [x,y,3] -> x-y; 
+    };
+
+    putLn $ case "abc" {
+        a@[x,y,'c'] -> [y,x] `append` a; 
+    };
+
+    putLn $ case "abc" {
+        s@"aba" -> ['a'] ++ s;
+        s@"abb" -> ['b'] ++ s;
+        s@"abc" -> ['c'] ++ s;
+        s@"abd" -> ['d'] ++ s;
+    };
+
+    dec xs;
+    xs <- 1:2:3:Null;
+    -- changes `1:2:3:Null` to `1:2:4:Null`
+    lsetVal (lgetNext $ lgetNext xs) 4; 
+    lprint xs;
+    putLn "";
+
+    -- changes `1:2:4:Null` to `1:2:5:Null`
+    Case xs {
+        1:2:x -> {lsetVal x 5;}
+    }
+    lprint xs;
+    putLn "";
+
+    return 0;
+}

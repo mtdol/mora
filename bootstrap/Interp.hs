@@ -3,6 +3,7 @@ module Interp where
 import Parse
 import qualified Data.Array as Array
 import qualified Data.Map as Map
+import Data.Char
 
 data Value = 
       VInt {vgetInt :: Integer} 
@@ -130,14 +131,14 @@ appendArrays v1@(VPtr _) v2@(VPtr _) m = let
 -- maps an id to a given state, trying the local context first, and
 --  later the global context
 mapToState :: Label -> Value -> State -> State
-mapToState id v (c,g,h)
-    | id `Map.member` c = 
-        let c' = Map.insert id v c in
+mapToState label v (c,g,h)
+    | label `Map.member` c = 
+        let c' = Map.insert label v c in
             (c', g, h)
-    | id `Map.member` g =
-        let g' = Map.insert id v g in
+    | label `Map.member` g =
+        let g' = Map.insert label v g in
             (c, g', h)
-    | otherwise = error $ "Could not find var: " ++ id
+    | otherwise = error $ "Could not find var: " ++ label
 
 -- forcibly maps the value to the given global context
 mapToGlobalContext :: Label -> Value -> State -> State
@@ -260,6 +261,8 @@ preloadedLabels = [
     , ("error",     1)
     , ("Array",     1)
     , ("length",    1)
+    , ("ord",       1)
+    , ("chr",       1)
   ]
 
 -- loads preloaded functions into a given state
@@ -364,17 +367,6 @@ interpGlobals (Seq ((DecAssign label x2):ss)) m = let
     g'' = Map.insert label v2 g'
     (os',m'') = interpGlobals (Seq ss) (c',g'',h')
     in (os++os',m'')
-interpGlobals (Seq ((Dec x):ss)) (c,g,h) =
-    -- declare in global context
-    let g' = aux x g 
-        (os,m'') = interpGlobals (Seq ss) (c,g',h)
-    in (os,m'') where 
-    aux x g = 
-        -- iterate over sub-exprs of `dec` expr
-        case x of
-            Op2 "," (Var id) x2 -> aux x2 (Map.insert id VVoid g)
-            -- TODO: same as `dec` situation below
-            Var id              -> Map.insert id VVoid g
 interpGlobals (Seq (s:ss)) m = case s of
     -- ignore
     Fn _ _ _ -> interpGlobals (Seq ss) m
@@ -415,18 +407,13 @@ interpS (DecAssign label x2) m = let
     c'' = Map.insert label v2 c'
     in (Nothing,os,(c'',g',h'))
 -- maps each var into the context with a meaningless `VVoid` value
-interpS (Dec x) (c,g,h) = 
-    let c' = aux x c in (Nothing,[],(c',g,h)) where 
-    aux x c = 
-        case x of
-            Op2 "," (Var label) x2 -> aux x2 (Map.insert label VVoid c)
-            -- TODO: inserting Void might not be the best solution,
-            --  maybe try `Maybe` instead
-            Var label              -> Map.insert label VVoid c
+interpS (Dec (Var label)) (c,g,h) = let
+    c' = Map.insert label VVoid c
+    in (Nothing,[],(c',g,h))
 
-interpS (Assign (Var id) x) m =
+interpS (Assign (Var label) x) m =
     let (v,os,m') = interpX x m
-        m'' = mapToState id v m'
+        m'' = mapToState label v m'
         in
             (Nothing,os, m'')
 
@@ -491,6 +478,9 @@ interpS (Case x elems) m =
     let (v,os,m') = interpX x m
         (v',os',m'') = interpCaseStmtElems elems v m'
     in (v',os++os',m'')
+
+interpS s m = 
+    error $ "Interp: Could not match stmt:\n" ++ show s 
 
 interpCaseStmtElems :: [CaseStmtElem] -> Value -> State 
     -> (Maybe Value,[IO Value],State)
@@ -748,6 +738,9 @@ interpX (CaseX x elems) m =
 interpX (Op2 op x1 x2) m = interpX (Ap (Ap (Var op) x1) x2) m
 interpX (Op1 op x) m = interpX (Ap (Var op) x) m
 
+-- interpX x m = 
+--     error $ "Interp: Could not match expr:\n" ++ show x
+
 
 interpCaseExprElems :: [CaseExprElem] -> Value -> State 
     -> (Value,[IO Value],State)
@@ -789,6 +782,14 @@ interpPreloadedFn op xs m = case op of
         (vptr,os,m') = interpX x m
         (VArray _ n) = getFromHeap vptr m
         in (VInt n,os,m')
+    "ord" -> let
+        [x] = xs
+        (VChar c,os,m') = interpX x m
+        in (VInt $ toInteger $ ord c,os,m')
+    "chr" -> let
+        [x] = xs
+        (VInt i,os,m') = interpX x m
+        in (VChar $ chr $ fromIntegral i,os,m')
 
 interpVGetter :: Value -> State -> (Value,[IO Value],State)
 interpVGetter (VGetter label i [x]) m = let

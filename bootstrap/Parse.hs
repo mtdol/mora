@@ -260,7 +260,11 @@ operators = [
             ,  [Infix   (reservedOp ">" >> return (Op2 ">")) AssocLeft,
                 Infix   (reservedOp "<" >> return (Op2 "<")) AssocLeft,
                 Infix   (reservedOp ">=" >> return (Op2 ">=")) AssocLeft,
-                Infix   (reservedOp "<=" >> return (Op2 "<=")) AssocLeft
+                Infix   (reservedOp "<=" >> return (Op2 "<=")) AssocLeft,
+                Infix   (reservedOp "=" >> return (Op2 "=")) AssocLeft,
+                Infix   (reservedOp "/="  >> return (Op2 "/=")) AssocLeft,
+                Infix   (reservedOp "=="  >> return (Op2 "==")) AssocLeft,
+                Infix   (reservedOp "/=="  >> return (Op2 "/==")) AssocLeft
                 ]
             ,  [Infix   (reservedOp "&&" >> return (Op2 "&&")) AssocLeft,
                 Infix   (reservedOp "&" >> return (Op2 "&")) AssocLeft,
@@ -278,11 +282,6 @@ operators = [
                 Infix   (reservedOp ">>=" >> return (Op2 ">>=")) AssocLeft,
                 Infix   (reservedOp ":" >> return (Op2 ":")) AssocRight,
                 Infix   (reservedOp "<:>" >> return (Op2 "<:>")) AssocRight
-                ]
-            ,  [Infix   (reservedOp "=" >> return (Op2 "=")) AssocLeft,
-                Infix   (reservedOp "/="  >> return (Op2 "/=")) AssocLeft,
-                Infix   (reservedOp "=="  >> return (Op2 "==")) AssocLeft,
-                Infix   (reservedOp "/=="  >> return (Op2 "/==")) AssocLeft
                 ]
            ,   [
                 Infix   (reservedOp "$" >> return (Op2 "$")) AssocRight,

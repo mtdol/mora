@@ -28,11 +28,69 @@ fn f x {
 perhaps lift the sub-procs to the global space (to allow recursion)
     and then do static variable renaming
 
+- `op` doesn't work with <:> or </> ops
+
 
 - allow file manipulation, probably with file handles
 
 
 
+allow prefixing of code blocks (presumably used by preprocessor to also
+implement qualified imports)
+```
+{#prefix:abc#
+dec x <- 2;
+dec y <- 3;
+}
+@ abc.x;
+@ abc.y;
+```
+
+```
+{#region#
+-- like a declaration but private, only allowed at the top-level
+static x <- 3;
+static fn f a {...}
+}
+
+@x; -- illegal, vars declared in a region as `static` cannot be
+    --  be accessed outside it.
+```
+
+
+regions can be nested, of course
+```
+{#region#
+{#prefix:std#
+    {#region#
+    {#prefix:list#
+        data List ...
+        static fn head xs {...}
+    }
+    }
+    fn add1 n {...}
+}
+}
+
+std.add1 3;
+list.Cons 3 list.Null;
+dec xs <- 1 list.: Null;
+list.head $ xs -- illegal, `head` is static
+```
+
+
+qualified import
+```
+#qualifiedInclude <list.mr> list
+```
+is equivalent to
+```
+{#region#
+{#prefix:list#
+-- code from `std.mr` here
+}
+}
+```
 
 
 
