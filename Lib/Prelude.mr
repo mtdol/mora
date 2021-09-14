@@ -20,10 +20,7 @@ data Either a b :=
 -- generic heap reference
 data Box a := Box ({unbox,setbox} :: a);
 
--- data Bool       := True | False; 
-
 type String     := Array Char;
-
 
 
 -- id :: a -> a;
@@ -31,10 +28,7 @@ fn id a {return a;}
 
 --not :: Bool -> Bool;
 fn not b {return if b then False else True;}
---and :: Bool -> Bool -> Bool;
-fn and b1 b2 {return if b1 then (if b2 then True else False) else False;}
---or :: Bool -> Bool -> Bool;
-fn or b1 b2 {return if b1 then True else (if b2 then True else False);}
+
 --xor :: Bool -> Bool -> Bool;
 fn xor b1 b2 {return b1 /= b2;}
 

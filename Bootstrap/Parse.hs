@@ -148,31 +148,40 @@ def =
                                       , "$"
                                       , "!"
                                       , ":"
+                                      , ":'"
                                       , "@"
-                                      , "<@>"
+                                      , "@'"
+                                      , "?'"
+                                      , "?"
                                       , "$$"
+                                      , "$'"
                                       , "++"
+                                      , "+++"
+                                      , "+'"
+                                      , "-'"
+                                      , "*'"
+                                      , "/'"
                                       , "//"
                                       , "=="
                                       , "/=="
+                                      , "='"
+                                      , "/='"
                                       , "&&"
                                       , "&"
+                                      , "&'"
                                       , "||"
                                       , "|"
-                                      , "^^"
+                                      , "|'"
                                       , "^"
+                                      , "^'"
                                       , "!!"
-                                      , "**"
+                                      , "!'"
+                                      , ">'"
+                                      , "<'"
                                       , ">>"
                                       , ">>="
-                                      , "<|>"
-                                      , "<+>"
-                                      , "<&>"
-                                      , "<$>"
-                                      , "<@>"
-                                      , "<:>"
-                                      , "</>"
-                                      , "<*>"
+                                      , ">>'"
+                                      , ">>='"
                                       ]
            }
 
@@ -196,100 +205,133 @@ symbol      = Token.symbol      lexer
 
 
 -- ops that can be repurposed
-customOps = [
-      "@"
-    , "&&"
+customOpList = [
+      "@'"
+    , "@"
+    , "?'"
+    , "?"
+    , "&'"
     , "&"
-    , "||"
+    , "|'"
     , "|"
-    , "^^"
+    , "^'"
     , "^"
+    , ":'"
     , ":"
+    , "+++"
     , "++"
+    , "+'"
+    , "-'"
+    , "*'"
+    , "/'"
     , "//"
     , "=="
     , "/=="
+    , "='"
+    , "/='"
     , "!!"
+    , "!'"
     , "$$"
+    , "$'"
+    , ">>='"
     , ">>="
+    , ">>'"
     , ">>"
-    , "<@>"
-    , "<$>"
-    , "</>"
-    , "<*>"
-    , "<:>"
-    , "<+>"
-    , "<|>"
-    , "<&>"
+    , "<'"
+    , ">'"
     ]
 
-customOpsSet = Set.fromList customOps
+getReservedOp op = do 
+    reservedOp op
+    return op
 
-customOp = choice (map symbol customOps)
+customOpsSet = Set.fromList customOpList
+
+customOp = choice (map getReservedOp customOpList)
+
 
 operators = [  
-               [Infix   (reservedOp ""  >> return (Ap)) AssocLeft,
+               [
+                Infix   (reservedOp ""  >> return (Ap)) AssocLeft,
                 Postfix (reservedOp "()"  >> return (ApNull))
                 ]
-            ,  [Prefix  (reservedOp "-" >> return (Op1 "-")),
-                Infix   (reservedOp "." >> return (Op2 ".")) AssocLeft,
-                Infix   (reservedOp "!" >> return (Op2 "!")) AssocLeft,
+            ,  [
+                Prefix  (reservedOp "-" >> return (Op1 "-")),
+                Infix   (reservedOp "!'" >> return (Op2 "!'")) AssocLeft,
                 Infix   (reservedOp "!!" >> return (Op2 "!!")) AssocLeft,
+                Infix   (reservedOp "!" >> return (Op2 "!")) AssocLeft,
                 Infix   
                     (do 
                         v <- infixVar
                         return (\x y -> (Ap (Ap v x) y)))
                     AssocLeft
                 ]
-            ,  [Infix   (reservedOp "**"  >> return (Op2 "**")) AssocLeft,
+            ,  [
+                Infix   (reservedOp "**"  >> return (Op2 "**")) AssocLeft,
                 Infix   (reservedOp "**."  >> return (Op2 "**.")) AssocLeft,
-                Infix   (reservedOp "<*>"  >> return (Op2 "<*>")) AssocLeft
+                Infix   (reservedOp "^'" >> return (Op2 "^'")) AssocLeft,
+                Infix   (reservedOp "^" >> return (Op2 "^")) AssocLeft
                 ]
-            ,  [Infix   (reservedOp "*" >> return (Op2 "*")) AssocLeft,
+            ,  [
+                Infix   (reservedOp "*'" >> return (Op2 "*'")) AssocLeft,
                 Infix   (reservedOp "*." >> return (Op2 "*.")) AssocLeft,
-                Infix   (reservedOp "//" >> return (Op2 "//")) AssocLeft,
+                Infix   (reservedOp "*" >> return (Op2 "*")) AssocLeft,
+                Infix   (reservedOp "/'" >> return (Op2 "/'")) AssocLeft,
                 Infix   (reservedOp "/" >> return (Op2 "/")) AssocLeft,
                 Infix   (reservedOp "/." >> return (Op2 "/.")) AssocLeft,
                 Infix   (reservedOp "%" >> return (Op2 "%")) AssocLeft
                 ]
-            ,  [Infix   (reservedOp "+" >> return (Op2 "+")) AssocLeft,
+            ,  [
+                Infix   (reservedOp "+'" >> return (Op2 "+'")) AssocLeft,
                 Infix   (reservedOp "+." >> return (Op2 "+.")) AssocLeft,
+                Infix   (reservedOp "+" >> return (Op2 "+")) AssocLeft,
+                Infix   (reservedOp "-'" >> return (Op2 "-'")) AssocLeft,
                 Infix   (reservedOp "-" >> return (Op2 "-")) AssocLeft,
                 Infix   (reservedOp "-." >> return (Op2 "-.")) AssocLeft
                 ]
-            ,  [Infix   (reservedOp ">" >> return (Op2 ">")) AssocLeft,
+            ,  [
+                Infix   (reservedOp ">'" >> return (Op2 ">'")) AssocLeft,
+                Infix   (reservedOp ">" >> return (Op2 ">")) AssocLeft,
+                Infix   (reservedOp "<'" >> return (Op2 "<'")) AssocLeft,
                 Infix   (reservedOp "<" >> return (Op2 "<")) AssocLeft,
                 Infix   (reservedOp ">=" >> return (Op2 ">=")) AssocLeft,
                 Infix   (reservedOp "<=" >> return (Op2 "<=")) AssocLeft,
+                Infix   (reservedOp "='" >> return (Op2 "='")) AssocLeft,
                 Infix   (reservedOp "=" >> return (Op2 "=")) AssocLeft,
+                Infix   (reservedOp "/='"  >> return (Op2 "/='")) AssocLeft,
                 Infix   (reservedOp "/="  >> return (Op2 "/=")) AssocLeft,
                 Infix   (reservedOp "=="  >> return (Op2 "==")) AssocLeft,
                 Infix   (reservedOp "/=="  >> return (Op2 "/==")) AssocLeft
                 ]
-            ,  [Infix   (reservedOp "&&" >> return (Op2 "&&")) AssocLeft,
+            ,  [
+                Infix   (reservedOp "&&" >> return (Op2 "&&")) AssocLeft,
+                Infix   (reservedOp "&'" >> return (Op2 "&'")) AssocLeft,
                 Infix   (reservedOp "&" >> return (Op2 "&")) AssocLeft,
                 Infix   (reservedOp "||"  >> return (Op2 "||")) AssocLeft,
-                Infix   (reservedOp "|"  >> return (Op2 "|")) AssocLeft,
-                Infix   (reservedOp "^^" >> return (Op2 "^^")) AssocLeft,
-                Infix   (reservedOp "^" >> return (Op2 "^")) AssocLeft,
-                Infix   (reservedOp "<|>" >> return (Op2 "<|>")) AssocLeft,
-                Infix   (reservedOp "<&>" >> return (Op2 "<&>")) AssocLeft,
-                Infix   (reservedOp "</>" >> return (Op2 "</>")) AssocLeft 
+                Infix   (reservedOp "|'"  >> return (Op2 "|'")) AssocLeft,
+                Infix   (reservedOp "|"  >> return (Op2 "|")) AssocLeft
                 ]
-            ,  [Infix   (reservedOp "++" >> return (Op2 "++")) AssocLeft,
-                Infix   (reservedOp "<+>" >> return (Op2 "<+>")) AssocLeft,
+            ,  [
+                Infix   (reservedOp "+++" >> return (Op2 "+++")) AssocLeft,
+                Infix   (reservedOp "++" >> return (Op2 "++")) AssocLeft,
+                Infix   (reservedOp "//" >> return (Op2 "//")) AssocLeft,
+                Infix   (reservedOp ">>'" >> return (Op2 ">>'")) AssocLeft,
                 Infix   (reservedOp ">>" >> return (Op2 ">>")) AssocLeft,
+                Infix   (reservedOp ">>='" >> return (Op2 ">>='")) AssocLeft,
                 Infix   (reservedOp ">>=" >> return (Op2 ">>=")) AssocLeft,
-                Infix   (reservedOp ":" >> return (Op2 ":")) AssocRight,
-                Infix   (reservedOp "<:>" >> return (Op2 "<:>")) AssocRight
+                Infix   (reservedOp ":'" >> return (Op2 ":'")) AssocRight,
+                Infix   (reservedOp ":" >> return (Op2 ":")) AssocRight
                 ]
            ,   [
-                Infix   (reservedOp "$" >> return (Op2 "$")) AssocRight,
-                Infix   (reservedOp "$$" >> return (Op2 "$$")) AssocRight,
-                Infix   (reservedOp "<$>" >> return (Op2 "<$>")) AssocLeft
+                Infix   (reservedOp "$$" >> return (Op2 "$$")) AssocLeft,
+                Infix   (reservedOp "$'" >> return (Op2 "$'")) AssocRight,
+                Infix   (reservedOp "$" >> return (Op2 "$")) AssocRight
                 ]
-            ,  [Prefix  (reservedOp "@" >> return (Op1 "@")),
-                Prefix  (reservedOp "<@>" >> return (Op1 "<@>")),
+            ,  [
+                Prefix  (reservedOp "@'" >> return (Op1 "@'")),
+                Prefix  (reservedOp "@" >> return (Op1 "@")),
+                Prefix  (reservedOp "?'" >> return (Op1 "?'")),
+                Prefix  (reservedOp "?" >> return (Op1 "?")),
                 Infix   (reservedOp "::" >> return (Op2 "::")) AssocLeft
                 ]
             ]
@@ -324,8 +366,8 @@ typeTerm =
 patOperators = 
     [ 
       [Infix   (reservedOp "" >> return (PatAp)) AssocLeft]
-    , [Infix   (reservedOp ":" >> return (PatOp2 ":")) AssocRight,
-       Infix   (reservedOp "<:>" >> return (PatOp2 "<:>")) AssocRight]
+    , [Infix   (reservedOp ":'" >> return (PatOp2 ":'")) AssocRight,
+       Infix   (reservedOp ":" >> return (PatOp2 ":")) AssocRight]
     , [Infix   (reservedOp "$" >> return (PatAp)) AssocRight]
     ]
 

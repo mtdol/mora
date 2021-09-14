@@ -648,13 +648,10 @@ interpX (Op2 ">=" x1 x2) mid m =
 interpX (Op2 "<=" x1 x2) mid m =
     interpOp2Generic (<=) VBool x1 x2 mid m
 
--- interpX (Op2 "and" x1 x2) mid m =
---     interpOp2 interpToBool interpToBool (&&) VBool x1 x2 mid m
--- interpX (Op2 "or" x1 x2) mid m =
---     interpOp2 interpToBool interpToBool (||) VBool x1 x2 mid m
--- interpX (Op2 "xor" x1 x2) mid m =
---     let xor = a /= b in
---     interpOp2 interpToBool interpToBool (\x y -> x `xor` y) VBool x1 x2 mid m
+interpX (Op2 "&&" x1 x2) mid m =
+    interpOp2 interpToBool interpToBool (&&) VBool x1 x2 mid m
+interpX (Op2 "||" x1 x2) mid m =
+    interpOp2 interpToBool interpToBool (||) VBool x1 x2 mid m
 
 interpX (Op1 "-" x) mid m =
     interpOp1 interpToInt (\x -> 0 - x) VInt x mid m
