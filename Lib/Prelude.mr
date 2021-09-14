@@ -1,4 +1,12 @@
-#include <list.mr>
+module excluding () {
+    import List;
+    
+    op @   := printLn;
+    op ++  := append;
+    op &&  := and;
+    op ||  := or;
+    op ^^  := xor;
+}
 
 data Maybe a := 
       Yes ({getMaybe} :: a)  
@@ -16,11 +24,6 @@ data Box a := Box ({unbox,setbox} :: a);
 
 type String     := Array Char;
 
-op @   := printLn;
-op ++  := append;
-op &&  := and;
-op ||  := or;
-op ^^  := xor;
 
 
 -- id :: a -> a;

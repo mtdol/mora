@@ -1,9 +1,12 @@
+module excluding () {
+    op :  := Cons;
+}
+
 data List a := 
       Cons ({lgetVal, lsetVal} :: a) ({lgetNext, lsetNext} :: List a)
     | Null
 ;
 
-op : := Cons;
 
 fn null v {return v = Null;}
 

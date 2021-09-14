@@ -11,6 +11,9 @@ endif
 syn keyword basicKeywords if If then else Else For While fn op type data
 syn keyword basicKeywords return dec case Case of
 
+syn keyword preProcKeywords module import op
+syn match mrPreProc "#.*$"
+
 syn match operators '\v[+\-/*^=<>@!$%&|:\\]'
 
 syn match customInfixOp '[`][a-zA-Z_][a-zA-Z0-9_]*[`]'
@@ -30,7 +33,6 @@ syn match mrLineComment "--.*$" contains=mrTodo
 syn keyword mrTodo contained TODO 
 
 
-syn match mrPreProc "#.*$"
 
 syn region mrString start='"' end='"'
 syn region mrChar start='\'' end='\''
@@ -48,7 +50,8 @@ let b:current_syntax = "mora"
 
 hi def link mrLineComment       Comment
 hi def link mrBlockComment      Comment
-hi def link mrPreProc           PreProc
+"hi def link mrPreProc           PreProc
+hi def link preProcKeywords     PreProc
 "hi def link mrBlock             Statement
 hi def link mrType              Type
 "hi def link mrVar               Todo

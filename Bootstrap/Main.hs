@@ -15,27 +15,30 @@ main = do
     args <- getArgs
     handleArgs args
 
-stdModuleImport = "#include <std.mr>"
-includeStd = True
+includePrelude = False
+maxRecDepth = 700
 
 handleArgs :: [String] -> IO ()
 handleArgs ("-e":arg:[]) = 
-    run True arg "" []
+    run True arg emptyState "" [] 0
 handleArgs (file:args) = do
     h <- openFile file ReadMode
     c <- hGetContents h
     --hClose h
-    run False c file args
+    run False c emptyState file args 0
 handleArgs _ = print "Invalid Args."
 
---     interactive mode?    file text   file name   args 
-run :: Bool ->              String ->   String ->   [String] -> IO ()
-run im text cf args = do
-    -- standard module
-    let text' = if includeStd then stdModuleImport ++ "\n" ++ text
-        else text
-    text'' <- process text' 0 cf
-    let p = readProg text''
+--     interactive mode?    file text
+run :: Bool ->              String ->   
+--  Memory    module id   args         import count
+    State ->  String ->   [String] ->  Int 
+    -> IO ()
+run _ _ _ _ _ ipc | ipc >= maxRecDepth =
+    error "Maximum import depth exceded. Perhaps there is an import cycle."
+run im text m mid args ipc = do
+    -- run the preprocessor
+    let (text', modData, impData) = preprocess text includePrelude
+    let p = readProg text'
     -- well formed check
     let p' = case wellFormed p of {
         Right True -> p;
@@ -43,19 +46,20 @@ run im text cf args = do
         }
     let p'' = desugar p'
     if im then
-        let (os,m) = interpInteractive p''
+        let (os,m) = interpInteractive p'' mid
         in printValues os m
     -- file mode
     else 
-        let (ret,os,m) = interp p'' args 
+        let (ret,os,m) = interp p'' mid args
         in printValues os m >> 
             if ret /= (VInt 0) then 
                 error "Non-zero exit status." 
             else return ()
 
 -- only parses
-run' :: Bool -> String -> String -> [String] -> IO ()
-run' _ text _ _ = print $ readProg text
+run' :: Bool -> String -> State -> String -> [String] -> Int
+    -> IO ()
+run' _ text _ _ _ _ = print $ readProg text
 
 printValues :: [IO Value] -> State -> IO ()
 printValues (v:vs) m = do
