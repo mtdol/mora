@@ -35,7 +35,7 @@ syn keyword mrTodo contained TODO
 
 
 syn region mrString start='"' end='"'
-syn region mrChar start='\'' end='\''
+syn region mrChar start=' \'\|^\'' end='\''
 
 
 let b:current_syntax = "mora"

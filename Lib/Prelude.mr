@@ -1,11 +1,7 @@
 module excluding () {
     import List;
     
-    op @   := printLn;
-    op ++  := append;
-    op &&  := and;
-    op ||  := or;
-    op ^^  := xor;
+    op ++   append;
 }
 
 data Maybe a := 
@@ -20,7 +16,7 @@ data Either a b :=
 -- generic heap reference
 data Box a := Box ({unbox,setbox} :: a);
 
-type String     := Array Char;
+type String := Array Char;
 
 
 -- id :: a -> a;

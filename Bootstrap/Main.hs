@@ -15,7 +15,10 @@ main = do
     args <- getArgs
     handleArgs args
 
+preludeImport :: ModuleStmt
+preludeImport = Import "Prelude" (Excluding []) ""
 includePrelude = False
+
 maxRecDepth = 700
 
 handleArgs :: [String] -> IO ()
@@ -24,7 +27,6 @@ handleArgs ("-e":arg:[]) =
 handleArgs (file:args) = do
     h <- openFile file ReadMode
     c <- hGetContents h
-    --hClose h
     run False c emptyState file args 0
 handleArgs _ = print "Invalid Args."
 
@@ -37,8 +39,7 @@ run _ _ _ _ _ ipc | ipc >= maxRecDepth =
     error "Maximum import depth exceded. Perhaps there is an import cycle."
 run im text m mid args ipc = do
     -- run the preprocessor
-    let (text', modData, impData) = preprocess text includePrelude
-    let p = readProg text'
+    let (_,p) = readProg text
     -- well formed check
     let p' = case wellFormed p of {
         Right True -> p;
@@ -59,7 +60,7 @@ run im text m mid args ipc = do
 -- only parses
 run' :: Bool -> String -> State -> String -> [String] -> Int
     -> IO ()
-run' _ text _ _ _ _ = print $ readProg text
+run' _ text _ _ _ _ = print $ fst $ readProg text
 
 printValues :: [IO Value] -> State -> IO ()
 printValues (v:vs) m = do

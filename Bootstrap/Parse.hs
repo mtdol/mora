@@ -80,6 +80,22 @@ data PatExpr =
     | AsPattern String PatExpr
     deriving (Show, Eq, Ord)
 
+data ModuleData = 
+    ModuleData Manifest [ModuleStmt]
+    deriving (Show, Eq, Ord)
+
+data Manifest = 
+      Including [Label] 
+    | Excluding [Label]
+    deriving (Show, Eq, Ord)
+
+data ModuleStmt = 
+      --     mid   manifest  "as" label
+      Import Label Manifest  Label
+    | OpDec Label Label
+    deriving (Show, Eq, Ord)
+
+
 type Program = Seq
 --                vcons label       
 type DTypeElem = (Label,           
@@ -102,7 +118,7 @@ def =
            , Token.commentEnd       = "-}"
            , Token.commentLine      = "--"
            , Token.identStart       = letter <|> char '_'
-           , Token.identLetter      = alphaNum <|> char '_'
+           , Token.identLetter      = alphaNum <|> char '_' <|> char '.'
            , Token.reservedNames    = [ "If"
                                       , "Else"
                                       , "if"
@@ -119,6 +135,11 @@ def =
                                       , "Case"
                                       , "case"
                                       , "Void"
+                                      , "module"
+                                      , "op"
+                                      , "import"
+                                      , "excluding"
+                                      , "including"
                                       ]
            , Token.reservedOpNames  = [ "+"
                                       , "+."
@@ -407,19 +428,58 @@ patTupleLiteral = parens $ do
     return $ PatTuple (x1:xs)
 
 
+moduleData = do
+    reserved "module"
+    man <- manifest
+    mss <- braces $ many moduleStmt
+    return $ ModuleData man mss
+
+manifest = excludingManifest <|> includingManifest
+
+excludingManifest = do
+    reserved "excluding"
+    labels <- parens $ identifier `sepBy` reservedOp ","
+    return $ Excluding labels
+
+includingManifest = do
+    reserved "including"
+    labels <- parens $ identifier `sepBy` reservedOp ","
+    return $ Including labels
+
+moduleStmt = 
+        moduleImportStmt
+    <|> moduleOpStmt
+
+moduleImportStmt = do
+    reserved "import"
+    label <- identifier
+    man <- option (Excluding []) manifest
+    as  <- option "" (reserved "as" >> identifier)
+    semi
+    return $ Import label man as
+
+moduleOpStmt = do
+    reserved "op"
+    op <- customOp
+    label <- identifier
+    semi
+    return $ OpDec op label
+
+
 
 lhsExpr = expr 
 
-readProg :: String -> Seq
+readProg :: String -> (Maybe ModuleData, Seq)
 readProg input = case parse beginParse "" input of
     Left err  -> error $ show err
     Right val -> val
 
 beginParse = do 
     whiteSpace
+    mdat <- optionMaybe $ moduleData
     ss <- stmtSeq 
     eof
-    return $ ss
+    return $ (mdat, ss)
 
 block = braces stmtSeq
 
