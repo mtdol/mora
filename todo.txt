@@ -28,47 +28,5 @@ fn f x {
 perhaps lift the sub-procs to the global space (to allow recursion)
     and then do static variable renaming
 
-- `op` doesn't work with <:> or </> ops
-
 
 - allow file manipulation, probably with file handles
-
-
-- module system somewhat similar to haskell
-```
-{-List.mr-}
-
--- must be on the first line 
---
---      manifest
-module (head, tail);
-fn head ...
-fn tail ...
--- if not included in manifest, it is private
-fn privatefn ...
-
-
-{-another file-}
-import List;
-import Dir.F (a,b) as F;
-```
-
-the manifest can be prefixed with `including` or `excluding`
-```
-module including (a,b,...);
-module excluding (a,b,...);
-module (a,b,...); -- same as `module including`
-```
-
-imports have the same feature
-```
-import List including (head,tail);
-import List excluding (head,tail);
-import List (head,tail);
-```
-
-the `as` keyword can be used with imports to prefix the imported terms
-```
-import List as List;
-import Data.F excluding (a,b) as F;
-```

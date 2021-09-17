@@ -1,0 +1,14 @@
+module * {
+    -- star is not necessary, its the same as `excluding ()`,
+    -- which is the default for imports
+    import B * as b;
+    import C including (getc) as C;
+}
+
+
+fn main {
+    dec a <- b.b - C.getc();
+    printLn a; -- should print 2
+
+    return 0;
+}

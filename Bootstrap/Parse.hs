@@ -428,14 +428,21 @@ moduleData = do
     mss <- braces $ many moduleStmt
     return $ ModuleData man mss
 
-manifest = excludingManifest <|> includingManifest
+manifest = starManifest <|> excludingManifest <|> includingManifest
+
+starManifest = do
+    reservedOp "*"
+    return $ Excluding []
 
 excludingManifest = do
     reserved "excluding"
     labels <- parens $ identifier `sepBy` reservedOp ","
     return $ Excluding labels
 
-includingManifest = do
+includingManifest = 
+    (parens (identifier `sepBy` reservedOp ",") 
+        >>= \ls -> return $ Including ls)
+    <|> do
     reserved "including"
     labels <- parens $ identifier `sepBy` reservedOp ","
     return $ Including labels

@@ -1,0 +1,8 @@
+-- the `including` is optional
+module (getc) {
+    import B;   
+}
+
+dec c <- b - 2;
+
+fn getc -> c;

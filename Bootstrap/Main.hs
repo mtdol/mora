@@ -59,13 +59,13 @@ run :: Bool ->              Maybe String ->
     State ->  String ->  String ->          [String] 
     -> IO ()
 run im text m mid prjloc args = do
-    (os,_,m) <- aux im text m mid prjloc args 0 Set.empty
+    (os,_,_,m) <- aux im text m mid prjloc args 0 Map.empty
     printValues os m
  --   print (getKeyLabelsFromGlobalContext True m "B1")
  where
     aux :: Bool -> Maybe String -> State -> ModuleId -> String -> [String]
-        -> Int -> Set.Set ModuleId
-        -> IO ([IO Value], Set.Set ModuleId, State)
+        -> Int -> Map.Map ModuleId Manifest
+        -> IO ([IO Value], Map.Map ModuleId Manifest, Manifest, State)
     aux _ _ _ _ _ _ ipc _ | ipc >= maxRecDepth =
         error "Maximum import depth exceded. Perhaps there is an import cycle."
 --                                     already imported modules
@@ -83,7 +83,7 @@ run im text m mid prjloc args = do
         let (md,imps,ops) = moduleParseToComponents mp
         -- TODO: only import if not already explicitly imported
         let ops' = preludeOps ++ ops
-        let imps' = if mid == "Prelude" && not includePrelude
+        let imps' = if mid == "Prelude" || not includePrelude
             then imps 
             else preludeImport : imps
         -- well formed check
@@ -92,40 +92,41 @@ run im text m mid prjloc args = do
             Left errMsg -> error errMsg;
             }
         let p'' = desugar p'
-        (os,aimps',m') <- runImports mid prjloc imps' md m ipc aimps
+        (os,aimps',m') <- runImports mid prjloc imps' m ipc aimps
         if im then
             let (os',m'') = interpInteractive p'' mid m'
-            in return (os++os',mid `Set.insert` aimps',m'')
+            in return (os++os',Map.insert mid md aimps',md,m'')
         -- file mode
         else 
             let (ret,os',m'') = interp p'' mid m' args
             in if ret /= (VInt 0) then 
                     error "Non-zero exit status." 
-                else return (os++os',mid `Set.insert` aimps',m'')
-    runImports :: ModuleId -> String -> [ModuleStmt] -> Manifest ->
-        State -> Int -> Set.Set ModuleId
-        -> IO ([IO Value], Set.Set ModuleId, State)
-    runImports mid prjloc [] md m ipc aimps = return ([],aimps,m)
-    runImports mid prjloc (imp:imps) md m ipc aimps = do
-        (os,aimps',m') <- runImport mid prjloc imp md m ipc aimps
-        (os',aimps'',m'') <- runImports mid prjloc imps md m' ipc aimps'
+                else return (os++os',Map.insert mid md aimps',md,m'')
+
+    runImports :: ModuleId -> String -> [ModuleStmt] ->
+        State -> Int -> Map.Map ModuleId Manifest
+        -> IO ([IO Value], Map.Map ModuleId Manifest, State)
+    runImports mid prjloc [] m ipc aimps = return ([],aimps,m)
+    runImports mid prjloc (imp:imps) m ipc aimps = do
+        (os,aimps',m') <- runImport mid prjloc imp m ipc aimps
+        (os',aimps'',m'') <- runImports mid prjloc imps m' ipc aimps'
         return (os++os',aimps'',m'')
 
-    runImport :: ModuleId -> String -> ModuleStmt -> Manifest ->
-        State -> Int -> Set.Set ModuleId
-        -> IO ([IO Value], Set.Set ModuleId, State)
-    runImport mid prjloc imp@(Import impMid man asl) md m ipc aimps = do
-        (os,aimps',m') <- doImport impMid prjloc m ipc aimps
+    runImport :: ModuleId -> String -> ModuleStmt ->
+        State -> Int -> Map.Map ModuleId Manifest
+        -> IO ([IO Value], Map.Map ModuleId Manifest, State)
+    runImport mid prjloc imp@(Import impMid man asl) m ipc aimps = do
+        (os,aimps',md,m') <- doImport impMid prjloc m ipc aimps
         let m'' = mapReferences m' mid impMid md man asl 
         return (os,aimps',m'')
 
     -- runs the import if not already imported
-    doImport :: ModuleId -> String -> State -> Int -> Set.Set ModuleId
-        -> IO ([IO Value], Set.Set ModuleId, State)
-    doImport mid prjloc m ipc aimps = if mid `Set.member` aimps 
-        then return ([],aimps,m)
+    doImport :: ModuleId -> String -> State -> Int -> Map.Map ModuleId Manifest
+        -> IO ([IO Value], Map.Map ModuleId Manifest, Manifest, State)
+    doImport mid prjloc m ipc aimps = if mid `Map.member` aimps 
+        then return ([],aimps,aimps Map.! mid,m)
         else aux True Nothing m mid prjloc [] 
-            (ipc+1) (mid `Set.insert` aimps)
+            (ipc+1) aimps
 
     -- every elligible reference is mapped from the target module onto
     -- the current one

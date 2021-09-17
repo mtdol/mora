@@ -5,6 +5,9 @@ fn main {
     x <- 3;
     y <- x + 1; {- assigns 4 to y -}
     printLn $ y*2; -- prints 8
+    putLn g;
 
     return 0;
 }
+
+dec g <- "abc";

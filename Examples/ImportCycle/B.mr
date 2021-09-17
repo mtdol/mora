@@ -1,0 +1,4 @@
+module excluding () {
+    import A;
+}
+

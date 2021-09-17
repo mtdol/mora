@@ -1,0 +1,3 @@
+module including (b) {}
+
+dec b <- 6;
