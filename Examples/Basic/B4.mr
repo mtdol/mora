@@ -1,4 +1,4 @@
-fn sub x y {return x - y;}
+fn sub x y -> x - y;
 
 fn _map f xs {
     dec i;
@@ -12,7 +12,7 @@ fn _map f xs {
 
 fn main {
     dec add1, vs;
-    add1 <- \x {return x + 1;};
+    add1 <- \x -> x + 1;
     
     @ 5 `sub` 3;
     @ add1 6;
@@ -26,11 +26,11 @@ fn main {
     
     -- we do a little currying
     _map (sub 2) vs;
-    @vs;
+    @ vs;
 
     -- directly pass in a lambda
     _map (\x {return sub x 3;}) vs;
-    @vs;
+    @ vs;
 
     -- calls the nullary lambda, receives `sub 3`, applies 4
     @ (\ {return sub 3;})() 4; -- prints "-1"

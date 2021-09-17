@@ -172,8 +172,6 @@ def =
                                       , ":'"
                                       , "@"
                                       , "@'"
-                                      , "?'"
-                                      , "?"
                                       , "$$"
                                       , "$'"
                                       , "++"
@@ -229,8 +227,6 @@ symbol      = Token.symbol      lexer
 customOpList = [
       "@'"
     , "@"
-    , "?'"
-    , "?"
     , "&'"
     , "&"
     , "|'"
@@ -351,8 +347,6 @@ operators = [
             ,  [
                 Prefix  (reservedOp "@'" >> return (Op1 "@'")),
                 Prefix  (reservedOp "@" >> return (Op1 "@")),
-                Prefix  (reservedOp "?'" >> return (Op1 "?'")),
-                Prefix  (reservedOp "?" >> return (Op1 "?")),
                 Infix   (reservedOp "::" >> return (Op2 "::")) AssocLeft
                 ]
             ]
@@ -496,7 +490,8 @@ statement =
     <|> try decAssign
     <|> decStmt
     <|> returnStmt
-    <|> fnStmt
+    <|> try fnStmt
+    <|> fnX
     <|> opStmt
     <|> typeStmt
     <|> dataStmt
@@ -577,6 +572,15 @@ fnStmt = do
     params <- many identifier
     b <- block
     return $ Fn n params b
+
+fnX = do
+    reserved "fn"
+    n <- identifier
+    params <- many identifier
+    reservedOp "->"
+    x <- expr
+    semi
+    return $ Fn n params (Seq [Return x])
 
 opStmt = do
     reserved "op"
@@ -684,6 +688,12 @@ lamExpr = do
     b  <- block
     return $ Lambda as b
 
+lamX = do
+    reservedOp "\\"
+    as <- many identifier
+    reservedOp "->"
+    x  <- expr
+    return $ Lambda as (Seq [Return x])
 
 caseExpr = do
     reserved "case"
@@ -718,7 +728,8 @@ term =
     try tupleLiteral
     <|> parens expr
     <|> ifExpr
-    <|> lamExpr
+    <|> try lamExpr
+    <|> lamX
     <|> caseExpr
     <|> liftM PString stringLiteral
     <|> arrayLiteral

@@ -1,17 +1,17 @@
-fn fact n {return 
-    if (n <= 1) then
+fn fact n ->
+    if n <= 1 then
         1
     else
         n * fact (n-1) 
-;}
+;
 
 fn main {
     dec i, m;
     i <- 0;
     m <- 15;
 
-    While (i /= m) {
-        @ fact i;
+    While i /= m {
+        printLn $ fact i;
         i +< 1;
     }
 

@@ -4,7 +4,7 @@ fn main {
     dec y;
     x <- 3;
     y <- x + 1; {- assigns 4 to y -}
-    @ y*2; -- prints 8
+    printLn $ y*2; -- prints 8
 
     return 0;
 }

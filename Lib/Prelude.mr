@@ -18,30 +18,34 @@ data Box a := Box ({unbox,setbox} :: a);
 
 type String := Array Char;
 
+-- thunk :: a -> (() -> a)
+fn thunk x -> \ -> x;
+-- unthunk :: (() -> a) -> a
+fn unthunk x -> x();
 
 -- id :: a -> a;
-fn id a {return a;}
+fn id a -> a;
 
 --not :: Bool -> Bool;
-fn not b {return if b then False else True;}
+fn not b -> if b then False else True;
 
 --xor :: Bool -> Bool -> Bool;
-fn xor b1 b2 {return b1 /= b2;}
+fn xor b1 b2 -> b1 /= b2;
 
 --
 --- Basic Math
 --
 
-fn odd n {return n % 2 = 1;}
-fn even n {return n % 2 = 0;}
-fn add1 n {return n+1;}
-fn sub1 n {return n-1;}
+fn odd n -> n % 2 = 1;
+fn even n -> n % 2 = 0;
+fn add1 n -> n+1;
+fn sub1 n -> n-1;
 
-fn max n1 n2 {return if n1 >= n2 then n1 else n2;}
-fn min n1 n2 {return if n1 <= n2 then n1 else n2;}
+fn max n1 n2 -> if n1 >= n2 then n1 else n2;
+fn min n1 n2 -> if n1 <= n2 then n1 else n2;
 
 --inRange :: (Int,Int) -> Int;
-fn inRange r x {return x >= fst r && x < snd r;}
+fn inRange r x -> x >= fst r && x < snd r;
 
 -- in place map
 --map :: (a -> b) -> Array a -> Void;
@@ -167,13 +171,13 @@ fn zip xs ys {
 --
 
 --toUpper :: String -> String;
-fn toUpper s {return
-    \c {return
+fn toUpper s ->
+    \c -> (
         if inRange (97,122) (ord c) then
             chr $ ord c - 32
         else c
-    ;} `gmap` s
-;}
+    ) `gmap` s
+;
 
 
 
@@ -185,10 +189,11 @@ fn toUpper s {return
 fn retPrint v {printLn v; return v;}
 
 --print :: a -> Void;
-fn print v {printChar `vmap` show v;}
+fn print v {put $ show v;}
 --printLn :: a -> Void;
-fn printLn v {print v; printChar '\n';}
+fn printLn v {putLn $ show v;}
 
+-- prints strings
 fn put s {printChar `vmap` s;}
 fn putLn s {printChar `vmap` s; printChar '\n';}
 
@@ -224,24 +229,24 @@ fn readInt s {
 --- Structures, Tuples
 --
 
-fn fst tp {return
+fn fst tp ->
     case tp {
         (x,_) -> x;
     }
-;}
+;
 
-fn snd tp {return
+fn snd tp ->
     case tp {
         (_,y) -> y;
     }
-;}
+;
 
 -- uncurry :: (a -> b -> c) -> (a, b) -> c;
-fn uncurry f xy {return
+fn uncurry f xy ->
     f (fst xy) (snd xy)
-;}
+;
 
 -- curry :: ((a, b) -> c) -> a -> b -> c;
-fn curry f x y {return
+fn curry f x y ->
     f (x,y)
-;}
+;

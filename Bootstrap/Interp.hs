@@ -3,6 +3,7 @@ module Interp where
 import Parse
 import qualified Data.Array as Array
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Char
 
 data Value = 
@@ -26,8 +27,8 @@ data Value =
     -- the body portion is either an in language block of code or a String
     --  representing a preloaded function to execute in the interpreter 
     --
-    --    label         params  args           preloaded  body
-    | VFn (Maybe Label) [Label] [Expr] (Either String     Seq)
+    --    label         mid      params  args           preloaded  body
+    | VFn (Maybe Label) ModuleId [Label] [Expr] (Either String     Seq)
     -- Value constructor 
     --
     -- Example: `Cons val :: a, next :: List a` would be
@@ -89,6 +90,28 @@ emptyGlobalContext = Map.empty
 emptyHeap       :: Heap
 emptyHeap       = (Map.empty, 0)
 emptyState      = (emptyContext, emptyGlobalContext, emptyHeap)
+
+-- gets all keys from the global context that have the key `mid`
+--
+-- if `refs` is True, then we only return keys that map toreferences,
+--  else we return only keys that map to values
+-- 
+--
+getKeyLabelsFromGlobalContext refs m@(_,g,_) mid = let
+    elems = if refs
+        then (filter (leadsToRef m) (Map.keys g))
+        else (filter (not . leadsToRef m) (Map.keys g))
+    in foldr 
+        (\(GlobalKey klabel kmid) acc ->
+            if kmid == mid then klabel : acc else acc)
+        [] elems
+
+leadsToRef :: State -> GlobalKey -> Bool
+leadsToRef (_,g,_) key = if key `Map.member` g 
+    then case g Map.! key of
+        GlobalValue _ -> False
+        GlobalRef _ -> True
+    else False
 
 -- generates a fresh pointer and a new heap from an old heap
 genPtr :: Heap -> (Value, Heap)
@@ -230,17 +253,17 @@ updateList (_:xs) x' 0 = x' : updateList xs x' (-1)
 updateList (x:xs) x' i = x : updateList xs x' (i-1)
     
 
---                               return status  io stream    memory
-interp :: Program -> ModuleId -> [String] -> (Value,        [IO Value],  State)
-interp ss mid args = 
+--                                        return status  io stream    memory
+interp :: Program -> ModuleId -> State -> [String] -> (Value,        [IO Value],  State)
+interp ss mid m args = 
     let 
         -- now gather function and type definitions from the top-level
-        m  = interpDefs ss mid (mapPreloaded mid emptyState)
-        m' = interpOps ss mid m
+        m_  = interpDefs ss mid (mapPreloaded mid m)
+        m' = interpOps ss mid m_
         -- now exec global variables
         (os, m''@(c'',g'',h'')) = interpGlobals ss mid m'
         -- find the main function
-        vfn@(VFn _ _ _ _) = getFromState "main" mid m''
+        vfn@(VFn _ _ _ _ _) = getFromState "main" mid m''
         -- convert args into an in-language array
         (vptrs, m''') = getArrays args (c'',g'',h'')
         (args',am)    = allocateArray vptrs m'''
@@ -248,11 +271,11 @@ interp ss mid args =
         am'           = mapToLocalContext "args" args' am
     in case vfn of
         -- we must either have `fn main args` or `fn main`
-        (VFn _ [] [] (Right fb)) -> 
+        (VFn _ _ [] [] (Right fb)) -> 
             -- `ret` is the return status of the main function
             let (ret,os',am'') = interpRunFn fb [] [] mid am'
             in (ret,os++os',am'')
-        (VFn _ fps@["args"] [] (Right fb)) -> 
+        (VFn _ _ fps@["args"] [] (Right fb)) -> 
             let (ret,os',am'') = interpRunFn fb fps [(Var "args")] mid am'
             in (ret,os++os',am'')
         _ -> error "Could not find appropriate main function definition."
@@ -262,19 +285,19 @@ interp ss mid args =
                    ([],m) ss
 
 -- doesn't look for a main function
-interpInteractive :: Program -> ModuleId -> ([IO Value], State)
-interpInteractive ss mid =
-    let m'  = interpDefs ss mid (mapPreloaded mid emptyState)
+interpInteractive :: Program -> ModuleId -> State -> ([IO Value], State)
+interpInteractive ss mid m =
+    let m'  = interpDefs ss mid (mapPreloaded mid m)
         m'' = interpOps ss mid m'
         (os, m''') = interpGlobals ss mid m''
     in (os, m''')
 
 
 -- makes a preloaded function
-makePreloadedFn name arity =
+makePreloadedFn name arity mid =
     -- ["a3","a2","a1"]
     let as = foldr (\n acc -> ("a"++(show n)) : acc) [] [1..arity] in
-        (VFn (Just name) as [] (Left name))
+        (VFn (Just name) mid as [] (Left name))
     
 --                  name   arity  
 preloadedLabels :: [(Label,Int)]
@@ -288,11 +311,13 @@ preloadedLabels = [
     , ("chr",       1)
   ]
 
+preloadedLabelsSet = Set.fromList $ map fst preloadedLabels
+
 -- loads preloaded functions into a given state
 mapPreloaded :: ModuleId -> State -> State
 mapPreloaded mid m = let 
-    fs = map (\(label,arity) -> makePreloadedFn label arity) preloadedLabels
-    in foldr (\f@(VFn _ _ _ (Left s)) acc -> 
+    fs = map (\(label,arity) -> makePreloadedFn label arity mid) preloadedLabels
+    in foldr (\f@(VFn _ _ _ _ (Left s)) acc -> 
                     mapToGlobalContext s mid f acc)
         m fs
 
@@ -301,7 +326,7 @@ interpOps :: Program -> ModuleId -> State -> State
 interpOps (Seq []) mid m = m
 interpOps (Seq (s:ss)) mid m = case s of
     Op opname fname -> case getFromGlobalContext (GlobalKey fname mid) m of
-        vfn@(VFn _ _ _ _) -> let
+        vfn@(VFn _ _ _ _ _) -> let
             m' = mapToGlobalContext opname mid vfn m
             in interpOps (Seq ss) mid m'
         cons@(VCons _ _ _) -> let
@@ -321,7 +346,7 @@ interpDefs :: Program -> ModuleId -> State -> State
 interpDefs (Seq []) mid m     = m
 interpDefs (Seq (s:ss)) mid m = case s of
     Fn fl fps fb -> 
-        let vf = VFn (Just fl) fps [] (Right fb)
+        let vf = VFn (Just fl) mid fps [] (Right fb)
             m' = mapToGlobalContext fl mid vf m
         in interpDefs (Seq ss) mid m'
     DType _ _ elems -> let 
@@ -457,7 +482,7 @@ interpS (Assign (Op2 "!" lx1  lx2)   rx) mid m =
        
 -- local function definition
 interpS (Fn fl fps fb) mid m = 
-    let m' = mapToLocalContext fl (VFn (Just fl) fps [] (Right fb)) m
+    let m' = mapToLocalContext fl (VFn (Just fl) mid fps [] (Right fb)) m
     in (Nothing,[],m')
 interpS (If x ss1 ss2) mid m = 
     let (b,os,m'@(c',_,_)) = interpToBool x mid m
@@ -606,7 +631,7 @@ interpX (PTuple xs) mid m = let
     (vptr,m'') = genPtrMap v m'
     in (vptr,os,m'')
 
-interpX (Lambda lps lb) mid m = (VFn Nothing lps [] (Right lb),[],m)
+interpX (Lambda lps lb) mid m = (VFn Nothing mid lps [] (Right lb),[],m)
 
 interpX (Op2 "+" x1 x2) mid m =
     interpOp2 interpToInt interpToInt (+) VInt x1 x2 mid m
@@ -695,31 +720,31 @@ interpX (Ap x1 x2) mid m = case interpX x1 mid m of
             in (vptr,os++os',m'')
             -- currying
             else ((VCons label n (x2:as)),os,m')
-    ((VFn fl fps fas fb),os,m') ->
+    ((VFn fl fmid fps fas fb),os,m') ->
         case fps of
             [] -> error "Tried to apply argument onto nullary function."
             _  ->
                 if length fas == length fps - 1 then 
                     case fb of
                         Right fb ->
-                            let (v,os',m'') = interpRunFn fb fps (reverse (x2:fas)) mid m'
+                            let (v,os',m'') = interpRunFn fb fps (reverse (x2:fas)) fmid m'
                             in (v,os++os',m'')
                         -- preloaded functions
                         Left op -> let
-                            (v,os',m'') = interpPreloadedFn op (reverse (x2:fas)) mid m'
+                            (v,os',m'') = interpPreloadedFn op (reverse (x2:fas)) fmid m'
                             in (v,os++os',m'')
                 -- currying
-                else (VFn fl fps (x2:fas) fb,os,m')
+                else (VFn fl fmid fps (x2:fas) fb,os,m')
 
 interpX (ApNull x) mid m =
-    let ((VFn fl [] [] fb),os,m') = interpX x mid m
+    let ((VFn fl fmid [] [] fb),os,m') = interpX x mid m
     in case fb of
         Right fb -> let
-            (v,os',m'') = interpRunFn fb [] [] mid m'
+            (v,os',m'') = interpRunFn fb [] [] fmid m'
             in (v,os++os',m'')
         -- preloaded functions
         Left op -> let
-            (v,os',m'') = interpPreloadedFn op [] mid m'
+            (v,os',m'') = interpPreloadedFn op [] fmid m'
             in (v,os++os',m'')
 
 interpX (Op2 "$" x1 x2) mid m = interpX (Ap x1 x2) mid m

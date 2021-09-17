@@ -1,11 +1,11 @@
 fn main args {
     dec f :: File, s :: String;
 
-    If (length args /= 1) {
+    If length args /= 1 {
         error "Please enter a single file-name.";
     }
     
-    f <- getf (args ! 0);  -- file handler
+    f <- getf $ args ! 0;  -- file handler
     s <- readf f;          -- read the contents of `f` into `s`
 
     s <- toUpper s;

@@ -3,6 +3,11 @@ module Main where
 import System.Environment
 import System.IO
 import qualified Data.Array as Array
+import qualified Data.Set as Set
+import qualified Data.Map as Map
+import Data.List.Split (splitOn)
+import qualified System.FilePath as FP
+import qualified System.Directory as DIR
 
 import Parse
 import Preprocessor
@@ -17,50 +22,181 @@ main = do
 
 preludeImport :: ModuleStmt
 preludeImport = Import "Prelude" (Excluding []) ""
-includePrelude = False
+preludeOps :: [ModuleStmt]
+preludeOps = [
+      OpDec "++"    "append"
+    , OpDec ":"     "Cons"
+    , OpDec "@"     "printLn" 
+    , OpDec "!!"    "lindex"
+    ]
+includePrelude = True
 
-maxRecDepth = 700
+stdLibLoc :: IO String
+stdLibLoc = do
+    path <- getExecutablePath
+    return $ FP.takeDirectory (FP.takeDirectory path) FP.</> "Lib"
+
+
+-- turns a path to the main file into a module id
+-- ex: "a/b/F.mr" -> "F"
+mainLocToModuleId :: String -> ModuleId
+mainLocToModuleId loc = FP.dropExtension $ FP.takeFileName loc
+
+maxRecDepth = 400
 
 handleArgs :: [String] -> IO ()
-handleArgs ("-e":arg:[]) = 
-    run True arg emptyState "" [] 0
-handleArgs (file:args) = do
-    h <- openFile file ReadMode
-    c <- hGetContents h
-    run False c emptyState file args 0
+handleArgs ("-e":arg:[]) = do
+    loc <- stdLibLoc
+    run True (Just arg) emptyState "" loc []
+handleArgs (file:args) = 
+    run False Nothing emptyState 
+        (mainLocToModuleId file) (FP.takeDirectory file) args
 handleArgs _ = print "Invalid Args."
 
 --     interactive mode?    file text
-run :: Bool ->              String ->   
---  Memory    module id   args         import count
-    State ->  String ->   [String] ->  Int 
+run :: Bool ->              Maybe String ->   
+--  Memory    module id  project location   args
+    State ->  String ->  String ->          [String] 
     -> IO ()
-run _ _ _ _ _ ipc | ipc >= maxRecDepth =
-    error "Maximum import depth exceded. Perhaps there is an import cycle."
-run im text m mid args ipc = do
-    -- run the preprocessor
-    let (_,p) = readProg text
-    -- well formed check
-    let p' = case wellFormed p of {
-        Right True -> p;
-        Left errMsg -> error errMsg;
-        }
-    let p'' = desugar p'
-    if im then
-        let (os,m) = interpInteractive p'' mid
-        in printValues os m
-    -- file mode
-    else 
-        let (ret,os,m) = interp p'' mid args
-        in printValues os m >> 
-            if ret /= (VInt 0) then 
-                error "Non-zero exit status." 
-            else return ()
+run im text m mid prjloc args = do
+    (os,_,m) <- aux im text m mid prjloc args 0 Set.empty
+    printValues os m
+ --   print (getKeyLabelsFromGlobalContext True m "B1")
+ where
+    aux :: Bool -> Maybe String -> State -> ModuleId -> String -> [String]
+        -> Int -> Set.Set ModuleId
+        -> IO ([IO Value], Set.Set ModuleId, State)
+    aux _ _ _ _ _ _ ipc _ | ipc >= maxRecDepth =
+        error "Maximum import depth exceded. Perhaps there is an import cycle."
+--                                     already imported modules
+    aux im text m mid prjloc args ipc  aimps = do
+        text' <- case text of
+            -- if something, then text already supplied, else load from mid
+            Just txt -> return txt
+            Nothing -> do
+                libloc <- stdLibLoc
+                path <- moduleIdToPath mid prjloc libloc
+                h <- openFile path ReadMode 
+                hGetContents h
+        -- run the preprocessor
+        let (mp,p) = readProg text'
+        let (md,imps,ops) = moduleParseToComponents mp
+        -- TODO: only import if not already explicitly imported
+        let ops' = preludeOps ++ ops
+        let imps' = if mid == "Prelude" && not includePrelude
+            then imps 
+            else preludeImport : imps
+        -- well formed check
+        let p' = case wellFormed p of {
+            Right True -> p;
+            Left errMsg -> error errMsg;
+            }
+        let p'' = desugar p'
+        (os,aimps',m') <- runImports mid prjloc imps' md m ipc aimps
+        if im then
+            let (os',m'') = interpInteractive p'' mid m'
+            in return (os++os',mid `Set.insert` aimps',m'')
+        -- file mode
+        else 
+            let (ret,os',m'') = interp p'' mid m' args
+            in if ret /= (VInt 0) then 
+                    error "Non-zero exit status." 
+                else return (os++os',mid `Set.insert` aimps',m'')
+    runImports :: ModuleId -> String -> [ModuleStmt] -> Manifest ->
+        State -> Int -> Set.Set ModuleId
+        -> IO ([IO Value], Set.Set ModuleId, State)
+    runImports mid prjloc [] md m ipc aimps = return ([],aimps,m)
+    runImports mid prjloc (imp:imps) md m ipc aimps = do
+        (os,aimps',m') <- runImport mid prjloc imp md m ipc aimps
+        (os',aimps'',m'') <- runImports mid prjloc imps md m' ipc aimps'
+        return (os++os',aimps'',m'')
+
+    runImport :: ModuleId -> String -> ModuleStmt -> Manifest ->
+        State -> Int -> Set.Set ModuleId
+        -> IO ([IO Value], Set.Set ModuleId, State)
+    runImport mid prjloc imp@(Import impMid man asl) md m ipc aimps = do
+        (os,aimps',m') <- doImport impMid prjloc m ipc aimps
+        let m'' = mapReferences m' mid impMid md man asl 
+        return (os,aimps',m'')
+
+    -- runs the import if not already imported
+    doImport :: ModuleId -> String -> State -> Int -> Set.Set ModuleId
+        -> IO ([IO Value], Set.Set ModuleId, State)
+    doImport mid prjloc m ipc aimps = if mid `Set.member` aimps 
+        then return ([],aimps,m)
+        else aux True Nothing m mid prjloc [] 
+            (ipc+1) (mid `Set.insert` aimps)
+
+    -- every elligible reference is mapped from the target module onto
+    -- the current one
+    mapReferences :: State -> ModuleId -> ModuleId -> Manifest ->
+        Manifest -> Label
+        -> State
+    mapReferences m currMid trgMid moduleMan impMan asLabel =
+        foldr 
+            (\elem acc -> 
+                -- both manifests must allow the mapping
+                if 
+                       manifestAllows moduleMan elem 
+                    && manifestAllows impMan elem
+                    -- the label must not refer to a preloaded function
+                    && (not $ elem `Set.member` preloadedLabelsSet)
+                then mapReference acc elem currMid trgMid asLabel
+                else acc)
+            m (getKeyLabelsFromGlobalContext False m trgMid)
+    mapReference :: State -> Label -> ModuleId -> ModuleId -> Label
+        -> State
+    mapReference (c,g,h) elem currMid trgMid asLabel = let
+        ref = GlobalRef (GlobalKey elem trgMid)
+        elem' = if asLabel == "" then elem else asLabel ++ "." ++ elem
+        key = GlobalKey elem' currMid
+        g' = Map.insert key ref g
+        in (c,g',h)
 
 -- only parses
-run' :: Bool -> String -> State -> String -> [String] -> Int
-    -> IO ()
 run' _ text _ _ _ _ = print $ fst $ readProg text
+
+-- Looks for the path of the given module.
+-- First checks the directory where `Main` is (the project directory), 
+--  then checks the standard library directory `Lib`.
+--
+--                module id  path to project   path to Lib  output
+moduleIdToPath :: String ->  String ->         String ->    IO String
+moduleIdToPath mid prj lib = let
+    -- split module id into components, ie `"Data.M"` -> `["Data", "M"]`
+    elems = splitOn "." mid
+    prjTrg = FP.combine prj (FP.joinPath elems ++ ".mr")
+    libTrg = FP.combine lib (FP.joinPath elems ++ ".mr")
+    in 
+        DIR.doesFileExist prjTrg >>= \a ->
+        if a then
+            return prjTrg
+        else DIR.doesFileExist libTrg >>= \b ->
+        if b then
+            return libTrg
+        else error $ "import: Could not find module: `" ++ mid ++ "`." ++
+            "\n\n" ++ prjTrg ++ "\n" ++ libTrg ++ "\n"
+
+-- can the label be exported? ask the manifest.
+manifestAllows man label = case man of
+    Including ls -> label `elem` ls
+    Excluding ls -> not $ label `elem` ls
+
+moduleParseToComponents :: Maybe ModuleData 
+    -> (Manifest, [ModuleStmt], [ModuleStmt])
+-- if no module declaration is included, we just export everything
+moduleParseToComponents (Nothing) = (Excluding [],[],[])
+moduleParseToComponents (Just (ModuleData man mss)) = let
+    (imps, ops) = aux mss
+    in (man,imps,ops)
+ where
+    aux (op@(OpDec _ _):mss) = let 
+        (imps,ops) = aux mss
+        in (imps,op:ops)
+    aux (imp@(Import _ _ _):mss) = let 
+        (imps,ops) = aux mss
+        in (imp:imps,ops)
+    aux [] = ([],[])
 
 printValues :: [IO Value] -> State -> IO ()
 printValues (v:vs) m = do

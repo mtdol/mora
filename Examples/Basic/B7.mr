@@ -6,7 +6,7 @@ fn main {
     f();
     
     putLn "";
-    @x; -- 0
+    @ x; -- 0
 
     return 0;
 }
