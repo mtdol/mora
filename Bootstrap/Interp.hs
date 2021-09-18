@@ -257,7 +257,7 @@ interp ss mid m args =
     let 
         -- now gather function and type definitions from the top-level
         m'  = interpDefs ss mid (mapPreloaded mid m)
-        m'' = interpOps ss mid m'
+        m'' = m'
         -- now exec global variables
         (os, m''') = interpGlobals ss mid m''
         -- find the main function
@@ -302,7 +302,7 @@ interp ss mid m args =
 interpInteractive :: Program -> ModuleId -> State -> ([IO Value], State)
 interpInteractive ss mid m =
     let m'  = interpDefs ss mid (mapPreloaded mid m)
-        m'' = interpOps ss mid m'
+        m'' = m'
         (os, m''') = interpGlobals ss mid m''
     in (os, m''')
 
@@ -334,25 +334,6 @@ mapPreloaded mid m = let
     in foldr (\f@(VFn _ _ _ _ (Left s)) acc -> 
                     mapToGlobalContext s mid f acc)
         m fs
-
--- grabs all op names and maps them to their appropriate functions
-interpOps :: Program -> ModuleId -> State -> State
-interpOps (Seq []) mid m = m
-interpOps (Seq (s:ss)) mid m = case s of
-    Op opname fname -> case getFromGlobalContext (GlobalKey fname mid) m of
-        vfn@(VFn _ _ _ _ _) -> let
-            m' = mapToGlobalContext opname mid vfn m
-            in interpOps (Seq ss) mid m'
-        cons@(VCons _ _ _) -> let
-            m' = mapToGlobalContext opname mid cons m
-            in interpOps (Seq ss) mid m'
-        get@(VGetter _ _ _) -> let
-            m' = mapToGlobalContext opname mid get m
-            in interpOps (Seq ss) mid m'
-        set@(VSetter _ _ _) -> let
-            m' = mapToGlobalContext opname mid set m
-            in interpOps (Seq ss) mid m'
-    _ -> interpOps (Seq ss) mid m 
 
 -- grabs all function, type, and op definitions from the top level
 --  maps them into the global context
@@ -432,8 +413,6 @@ interpGlobals (Seq ((DecAssign label x2):ss)) mid m = let
 interpGlobals (Seq (s:ss)) mid m = case s of
     -- ignore
     Fn _ _ _ -> interpGlobals (Seq ss) mid m
-    -- ignore
-    Op _ _   -> interpGlobals (Seq ss) mid m
     -- ignore
     DType _ _ _ -> interpGlobals (Seq ss) mid m
     -- ignore
@@ -704,7 +683,7 @@ interpX (Op2 "!" x1 x2) mid m =
                 _ -> error "Tried to array-deref a non-array."
         _ -> error "Tried to array-deref a non-array."
 
-interpX (Ifx x1 x2 x3) mid m =
+interpX (IfX x1 x2 x3) mid m =
     let (b1,os,m') = interpToBool x1 mid m in
     if b1 then 
         let (v,os',m'') = interpX x2 mid m'

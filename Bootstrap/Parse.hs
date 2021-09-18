@@ -19,7 +19,6 @@ data Stmt =
     | If Expr Seq Seq
     --   Name   Params   Body
     | Fn Label [Label] Seq 
-    | Op Label Label
     -- `List a := Cons val :: a, next :: List a | Null`
     -- -> DType "List" [(Var "a")] Elems;
     -- Elems -> 
@@ -55,7 +54,7 @@ data Expr =
     | PVoid
     | Ap Expr Expr
     | ApNull Expr 
-    | Ifx Expr Expr Expr -- If expr
+    | IfX Expr Expr Expr -- If expr
     --       params   body
     | Lambda [Label] Seq
     | CaseX Expr [CaseExprElem]
@@ -508,7 +507,6 @@ statement =
     <|> returnStmt
     <|> try fnStmt
     <|> fnX
-    <|> opStmt
     <|> typeStmt
     <|> dataStmt
     <|> try assignStmt
@@ -597,14 +595,6 @@ fnX = do
     x <- expr
     semi
     return $ Fn n params (Seq [Return x])
-
-opStmt = do
-    reserved "op"
-    opname <- customOp
-    reservedOp ":="
-    fname  <- identifier
-    semi
-    return $ Op opname fname
 
 typeStmt = do
     reserved "type"
@@ -696,7 +686,7 @@ ifExpr = do
     e2 <- expr
     reserved "else"
     e3 <- expr
-    return $ Ifx e1 e2 e3
+    return $ IfX e1 e2 e3
 
 lamExpr = do
     reservedOp "\\"

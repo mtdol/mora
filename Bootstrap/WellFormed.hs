@@ -61,10 +61,6 @@ dupDecs (Seq ((DecAssign label _):ss)) m =
     if label `Set.member` m then
         genDupErr label
     else dupDecs (Seq ss) (label `Set.insert` m)
-dupDecs (Seq ((Op op _):ss)) m =
-    if op `Set.member` m then
-        genDupErr op
-    else dupDecs (Seq ss) (op `Set.insert` m)
 dupDecs (Seq (dt@(DType _ _ _):ss)) m = do
     let labels = getDTLabels dt
     let dups = getDuplicates labels
@@ -116,7 +112,6 @@ lowLevel p = do
  where
     f (TypeAlias _ _) = reject $ "Type aliases not allowed in low-level."
     f (DType _ _ _) = reject $ "Data type def not allowed in low-level."
-    f (Op _ _) = reject $ "Op alias not allowed in low-level."
     f s = accept
 
 -- runs over the low level of the parse tree applies `f` to each statement
@@ -132,7 +127,6 @@ checkLowLevelS f (Stmt x) = accept
 checkLowLevelS f (Block ss) = aux f ss
 checkLowLevelS f (If x ss1 ss2) = aux f ss1 >> aux f ss2
 checkLowLevelS f (Fn flabel fps fss) = aux f fss
-checkLowLevelS f (Op op label) = accept
 checkLowLevelS f (DType _ _ _) = accept
 checkLowLevelS f (TypeAlias _ _) = accept
 checkLowLevelS f (While x ss) = aux f ss

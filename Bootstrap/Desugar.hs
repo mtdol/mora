@@ -83,8 +83,6 @@ relabelS (Return x) ol nl = (Return (relabelX x ol nl))
 
 relabelS (Fn label ss1 ss2) ol nl = 
     error $ "Desugar->relabel: Cannot relabel fn."
-relabelS (Op op flabel) ol nl = 
-    error $ "Desugar->relabel: Cannot relabel op."
 --relabelS s _ _ = error $ "Desugar->relabel: Unknown stmt:\n" ++ show s
 
 
@@ -101,8 +99,8 @@ relabelX x@(PArray _) _ _ = x
 relabelX x@(PTuple _) _ _ = x
 relabelX (Ap x1 x2) ol nl = Ap (relabelX x1 ol nl) (relabelX x2 ol nl)
 relabelX (ApNull x) ol nl = ApNull (relabelX x ol nl)
-relabelX (Ifx x1 x2 x3) ol nl = 
-    Ifx (relabelX x1 ol nl) (relabelX x2 ol nl) (relabelX x3 ol nl) 
+relabelX (IfX x1 x2 x3) ol nl = 
+    IfX (relabelX x1 ol nl) (relabelX x2 ol nl) (relabelX x3 ol nl) 
 relabelX (CaseX x elems) ol nl = let
     elems' = map (\(px, x) -> (px, relabelX x ol nl)) elems
     x' = relabelX x ol nl

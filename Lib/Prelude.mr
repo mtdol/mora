@@ -407,6 +407,7 @@ fn listToArray xs {
     return ret;
 }
 
+-- list pretty print
 fn lprint xs {
     Case xs {
         x:xs -> {print x; put " : "; lprint xs;}

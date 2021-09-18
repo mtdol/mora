@@ -10,7 +10,7 @@ import qualified System.FilePath as FP
 import qualified System.Directory as DIR
 
 import Parse
-import Preprocessor
+import Expander
 import WellFormed
 import Desugar
 import Interp
@@ -24,8 +24,8 @@ preludeImport :: ModuleStmt
 preludeImport = Import "Prelude" (Excluding []) ""
 preludeOps :: [ModuleStmt]
 preludeOps = [
-      OpDec "++"    "append"
-    , OpDec ":"     "Cons"
+      OpDec ":"     "Cons"
+    , OpDec "++"    "append"
     , OpDec "@"     "printLn" 
     , OpDec "!!"    "lindex"
     ]
@@ -86,19 +86,20 @@ run im text m mid prjloc args = do
         let imps' = if mid == "Prelude" || not includePrelude
             then imps 
             else preludeImport : imps
+        let p' = expand p ops'
         -- well formed check
-        let p' = case wellFormed p of {
-            Right True -> p;
+        let p'' = case wellFormed p' of {
+            Right True -> p';
             Left errMsg -> error errMsg;
             }
-        let p'' = desugar p'
+        let p''' = desugar p''
         (os,aimps',m') <- runImports mid prjloc imps' m ipc aimps
         if im then
-            let (os',m'') = interpInteractive p'' mid m'
+            let (os',m'') = interpInteractive p''' mid m'
             in return (os++os',Map.insert mid md aimps',md,m'')
         -- file mode
         else 
-            let (ret,os',m'') = interp p'' mid m' args
+            let (ret,os',m'') = interp p''' mid m' args
             in if ret /= (VInt 0) then 
                     error "Non-zero exit status." 
                 else return (os++os',Map.insert mid md aimps',md,m'')
