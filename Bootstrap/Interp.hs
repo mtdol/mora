@@ -21,14 +21,14 @@ data Value =
     -- the params are the params
     --
     -- the args are the arguments that the VFn has received so far 
-    --  (used to implement currying, they are exec'd when the num of args = 
-    --  the num of params)
+    --  (used to implement currying, the function is called when the 
+    --  number of args = the arity of the function)
     --
     -- the body portion is either an in language block of code or a String
     --  representing a preloaded function to execute in the interpreter 
     --
     --    label         mid      params  args           preloaded  body
-    | VFn (Maybe Label) ModuleId [Label] [Expr] (Either String     Seq)
+    | VFn (Maybe Label) ModuleId [Label] [Value] (Either String     Seq)
     -- Value constructor 
     --
     -- Example: `Cons val :: a, next :: List a` would be
@@ -36,7 +36,7 @@ data Value =
     --  with no args applied
     -- 
     --      label  num fields  args
-    | VCons Label  Int         [Expr]
+    | VCons Label  Int         [Value]
     -- the `label` is the name of the object, such as `Cons` or `Null`
     --
     -- the `member` tuples of the obj are always listed in the
@@ -48,9 +48,9 @@ data Value =
     --     label  members
     | VObj Label  [Value]
     --        cons name  index of member  args
-    | VGetter Label      Int              [Expr]
+    | VGetter Label      Int              [Value]
     --        cons name  index of member  args
-    | VSetter Label      Int              [Expr]
+    | VSetter Label      Int              [Value]
     -- meaningless value, usually the result of an assignment 
     --  or Void returning function
     | VVoid
@@ -116,14 +116,6 @@ leadsToRef (_,g,_) key = if key `Map.member` g
 -- generates a fresh pointer and a new heap from an old heap
 genPtr :: Heap -> (Value, Heap)
 genPtr (h, ptr) = (VPtr ptr,(h,ptr+1))
-
--- generates a pointer for the given object, maps the pointer to the object
---  on the heap, and returns the pointer back
-genPtrMap :: Value -> State -> (Value,State)
-genPtrMap v m@(c,g,h) = let
-    (vptr,h') = genPtr h
-    m' = mapToHeap vptr v (c,g,h')
-    in (vptr,m')
 
 -- generates heap space, maps the given value with a fresh ptr, and returns
 -- the ptr and modified heap
@@ -228,10 +220,16 @@ getFromGlobalContext key m@(_,g,_) = case g Map.! key of
     GlobalValue v -> v
     GlobalRef key' -> getFromGlobalContext key' m
 
+showHeap :: State -> String
+showHeap (_,_,h) = 
+    show h
+
 getFromHeap :: Value -> State -> Value
-getFromHeap (VPtr ptr) (_,_,(h,_))
+getFromHeap (VPtr ptr) m@(_,_,(h,_))
     | ptr `Map.member` h = h Map.! ptr
-    | otherwise = error "get: Bad ptr."
+    | otherwise = 
+        error $ "get: Bad ptr." ++ "\nheap:\n" ++ showHeap m
+            ++ "\n\nptr:\n" ++ show ptr
 
 listToArray :: [a] -> Array.Array Integer a
 listToArray es =
@@ -258,31 +256,47 @@ interp :: Program -> ModuleId -> State -> [String] -> (Value,        [IO Value],
 interp ss mid m args = 
     let 
         -- now gather function and type definitions from the top-level
-        m_  = interpDefs ss mid (mapPreloaded mid m)
-        m' = interpOps ss mid m_
+        m'  = interpDefs ss mid (mapPreloaded mid m)
+        m'' = interpOps ss mid m'
         -- now exec global variables
-        (os, m''@(c'',g'',h'')) = interpGlobals ss mid m'
+        (os, m''') = interpGlobals ss mid m''
         -- find the main function
-        vfn@(VFn _ _ _ _ _) = getFromState "main" mid m''
+        vfn = getFromState "main" mid m'''
         -- convert args into an in-language array
-        (vptrs, m''') = getArrays args (c'',g'',h'')
-        (args',am)    = allocateArray vptrs m'''
-        -- map the args vptr to local context as `args`
-        am'           = mapToLocalContext "args" args' am
+        (vptrs, m'''') = getArrays args m'''
+        (args',m_)     = allocateArray vptrs m''''
     in case vfn of
         -- we must either have `fn main args` or `fn main`
         (VFn _ _ [] [] (Right fb)) -> 
             -- `ret` is the return status of the main function
-            let (ret,os',am'') = interpRunFn fb [] [] mid am'
-            in (ret,os++os',am'')
+            let (ret,os',m_') = runMain vfn Nothing mid m_
+            in (ret,os++os',m_')
         (VFn _ _ fps@["args"] [] (Right fb)) -> 
-            let (ret,os',am'') = interpRunFn fb fps [(Var "args")] mid am'
-            in (ret,os++os',am'')
+            let (ret,os',m_') = runMain vfn (Just args') mid m_
+            in (ret,os++os',m_')
         _ -> error "Could not find appropriate main function definition."
     where
     getArrays ss m = foldr (\s (vptrs,m) -> 
                      let (vptr,m') = allocateArray (map VChar s) m in (vptr:vptrs,m'))
                    ([],m) ss
+    -- runs the main function 
+    --
+    --         `main`   args ptr        
+    runMain :: Value -> Maybe Value -> ModuleId -> State 
+    --      return value   io stream   memory
+        ->  (Value,        [IO Value], State)
+    -- no `args`
+    runMain vfn@(VFn _ _ [] _ (Right fb)) Nothing mid m = 
+        interpRunFn fb [] [] mid m
+    -- `args`, gotta get a little dirty
+    runMain vfn@(VFn _ _ ["args"] _ (Right fb)) (Just vptr) mid m = let
+        m' = mapToLocalContext "args" vptr m
+        (v,os,m'') = interpSeq fb mid m'
+        in case v of
+            Nothing -> (VVoid,os,m'')
+            Just v -> (v,os,m'')
+            
+        
 
 -- doesn't look for a main function
 interpInteractive :: Program -> ModuleId -> State -> ([IO Value], State)
@@ -366,7 +380,7 @@ interpDTElems ((label,rhs):elems) mid m = let
         -- Argument-less constructors like "Null" can be evaluated immediately
         [] -> let
             obj = (VObj label [])
-            (vptr, m') = genPtrMap obj m
+            (vptr, m') = allocateValue obj m
             m'' = mapToGlobalContext label mid vptr m'
             in interpDTElems elems mid m''
         _ -> let
@@ -564,12 +578,11 @@ interpOp1 f op t x mid m =
 -- constructs an Object and returns a pointer to it.
 -- The exprs are in normal order.
 --                                
-interpCons :: Label -> [Expr] -> ModuleId -> State -> (Value,[IO Value],State)
-interpCons label xs mid m = let
-    (vs,os,m') = interpXs (reverse xs) mid m
-    obj = VObj label (reverse vs)
-    (vptr,m'') = genPtrMap obj m'
-    in (vptr,os,m'')
+interpCons :: Label -> [Value] -> ModuleId -> State -> (Value,[IO Value],State)
+interpCons label vs mid m = let
+    obj = VObj label vs
+    (vptr,m') = allocateValue obj m
+    in (vptr,[],m')
 
 --                                          results  io stream    memory
 interpXs :: [Expr] -> ModuleId -> State -> ([Value], [IO Value],  State)
@@ -580,25 +593,25 @@ interpXs xs mid m =
           ([],[],m) xs
 
 -- loads args into fresh local context and runs the expression
-interpRunFn :: Seq -> [Label] -> [Expr] -> ModuleId -> State 
+interpRunFn :: Seq -> [Label] -> [Value] -> ModuleId -> State 
     -> (Value,[IO Value],State)
-interpRunFn fb fps fas mid m =
-        -- exec the args
-    let (fas',os,(c',g',h')) = interpXs (reverse fas) mid m
+interpRunFn fb fps fas mid m@(c,g,h) =
+        -- prep the args
+    let fas' = fas
         -- load args into fresh local context
         m'   = foldr 
                    (\(p,a) acc -> mapToLocalContext p a acc) 
-                   (emptyContext,g',h')
-                   (zip (reverse fps) fas')
-        -- execute the funtion body
-        (v, os', (_,g'',h'')) = interpSeq fb mid m'
+                   (emptyContext,g,h)
+                   (zip fps fas')
+        -- execute the function body
+        (v, os, (_,g',h')) = interpSeq fb mid m'
         -- keep the old local context, take the new global context and heap
-        m'' = (c',g'',h'')
+        m'' = (c,g',h')
     in case v of
         -- no explicit return value, we asume void
-        Nothing -> (VVoid, os++os', m'')
+        Nothing -> (VVoid, os, m'')
         -- the return value, pass it on as a value
-        Just v  -> (v, os++os', m'')
+        Just v  -> (v, os, m'')
 
 -- The value is the value we are working with.
 -- The value stream is all of the values that have been accumulated from
@@ -628,7 +641,7 @@ interpX (PString s) mid m = let
 interpX (PTuple xs) mid m = let
     (vs,os,m') = interpXs xs mid m 
     v = VTuple vs
-    (vptr,m'') = genPtrMap v m'
+    (vptr,m'') = allocateValue v m'
     in (vptr,os,m'')
 
 interpX (Lambda lps lb) mid m = (VFn Nothing mid lps [] (Right lb),[],m)
@@ -700,41 +713,43 @@ interpX (Ifx x1 x2 x3) mid m =
         let (v,os',m'') = interpX x3 mid m'
         in (v,os++os',m'')
 
-interpX (Ap x1 x2) mid m = case interpX x1 mid m of
-    ((VGetter label i _),os,m') -> let
+interpX (Ap x1 x2) mid m = let 
+    (v2,os,m') = interpX x2 mid m
+    in case interpX x1 mid m' of
+    ((VGetter label i _),os',m'') -> let
         -- only one arg for getter, so just run
-        (v,os',m'') = interpVGetter (VGetter label i [x2]) mid m'
-        in (v,os++os',m'')
-    ((VSetter label i as),os,m') -> case as of
+        (v,os'',m''') = interpVGetter (VGetter label i [v2]) mid m''
+        in (v,os++os'++os'',m''')
+    ((VSetter label i as),os',m'') -> case as of
         -- currying
-        [] -> ((VSetter label i [x2]),os,m')
+        [] -> ((VSetter label i [v2]),os++os',m'')
         -- run case
-        [x1] -> let
-            (v,os',m'') = interpVSetter (VSetter label i [x2,x1]) mid m'
-            in (v,os++os',m'')
-    ((VCons label n as),os,m') -> case n of
+        [v1] -> let
+            (v,os'',m''') = interpVSetter (VSetter label i [v1,v2]) mid m''
+            in (v,os++os'++os'',m''')
+    ((VCons label n as),os',m'') -> case n of
         0 -> error "Tried to apply argument onto nullary constructor."
         _ -> if length as == n - 1 then
             -- run
-            let (vptr,os',m'') = interpCons label (reverse (x2:as)) mid m'
-            in (vptr,os++os',m'')
+            let (vptr,os'',m''') = interpCons label (reverse (v2:as)) mid m''
+            in (vptr,os++os'++os'',m''')
             -- currying
-            else ((VCons label n (x2:as)),os,m')
-    ((VFn fl fmid fps fas fb),os,m') ->
+            else ((VCons label n (v2:as)),os++os',m'')
+    ((VFn fl fmid fps fas fb),os',m'') ->
         case fps of
             [] -> error "Tried to apply argument onto nullary function."
             _  ->
                 if length fas == length fps - 1 then 
                     case fb of
                         Right fb ->
-                            let (v,os',m'') = interpRunFn fb fps (reverse (x2:fas)) fmid m'
-                            in (v,os++os',m'')
+                            let (v,os'',m''') = interpRunFn fb fps (reverse (v2:fas)) fmid m''
+                            in (v,os++os'++os'',m''')
                         -- preloaded functions
                         Left op -> let
-                            (v,os',m'') = interpPreloadedFn op (reverse (x2:fas)) fmid m'
-                            in (v,os++os',m'')
+                            (v,os'',m''') = interpPreloadedFn op (reverse (v2:fas)) fmid m''
+                            in (v,os++os'++os'',m''')
                 -- currying
-                else (VFn fl fmid fps (x2:fas) fb,os,m')
+                else (VFn fl fmid fps (v2:fas) fb,os++os',m'')
 
 interpX (ApNull x) mid m =
     let ((VFn fl fmid [] [] fb),os,m') = interpX x mid m
@@ -774,84 +789,78 @@ interpCaseExprElems ((px,x):elems) v mid m = case interpP px v mid m of
 
 
 -- interprets the preloaded functions
-interpPreloadedFn :: String -> [Expr] -> ModuleId -> State -> (Value,[IO Value],State)
-interpPreloadedFn op xs mid m = case op of
+interpPreloadedFn :: String -> [Value] -> ModuleId -> State -> (Value,[IO Value],State)
+interpPreloadedFn op vs mid m = case op of
     "printChar" -> let
-        [x] = xs
-        (v,os,m') = interpToChar x mid m
-        in (VVoid,os++[return $ VChar v],m')
+        [v@(VChar _)] = vs
+        in (VVoid,[return $ v],m)
     "show" -> let 
-        [x] = xs
-        in interpShow x mid m
+        [v] = vs
+        (vptr,m') = showMapValue v m
+        in (vptr,[],m')
     "error" -> let
-        [x] = xs
-        (vptr,os,m') = interpX x mid m 
-        (VArray a n) = getFromHeap vptr m'
+        [v] = vs
+        (VArray a n) = getFromHeap v m
         -- convert VChar array to Char list
         msg          = map vgetChar (arrayToList a n)
         in error msg
     "Array" -> let
-        [x] = xs
-        (n,os,m')   = interpToInt x mid m 
-        (c',g',h')  = m'
-        (vptr,h'')  = genPtr h'
+        [VInt n] = vs
+        (c,g,h)  = m
+        (vptr,h')  = genPtr h
         a           = VArray (makeArray n (VInt $ toInteger 0)) n
-        m''         = mapToHeap vptr a (c',g',h'')
-        in (vptr,os,m'')
+        m''         = mapToHeap vptr a (c,g,h')
+        in (vptr,[],m'')
     "length" -> let
-        [x] = xs
-        (vptr,os,m') = interpX x mid m
-        (VArray _ n) = getFromHeap vptr m
-        in (VInt n,os,m')
+        [v] = vs
+        (VArray _ n) = getFromHeap v m
+        in (VInt n,[],m)
     "ord" -> let
-        [x] = xs
-        (VChar c,os,m') = interpX x mid m
-        in (VInt $ toInteger $ ord c,os,m')
+        [VChar c] = vs
+        in (VInt $ toInteger $ ord c,[],m)
     "chr" -> let
-        [x] = xs
-        (VInt i,os,m') = interpX x mid m
-        in (VChar $ chr $ fromIntegral i,os,m')
+        [VInt i] = vs
+        in (VChar $ chr $ fromIntegral i,[],m)
 
 interpVGetter :: Value -> ModuleId -> State -> (Value,[IO Value],State)
-interpVGetter (VGetter label i [x]) mid m = let
-    (v,os,m') = interpX x mid m
+interpVGetter (VGetter label i [v]) mid m = let
     errMsg = "Failed to get `" ++ label ++ "` member."
     in case v of
-        vptr@(VPtr _) -> case getFromHeap vptr m' of
+        vptr@(VPtr _) -> case getFromHeap vptr m of
             (VObj label' mbs) ->
-                if label == label' then (mbs !! i,os,m') else
+                if label == label' then (mbs !! i,[],m) else
                     error errMsg
             _ -> error errMsg
         _ -> error errMsg
 
 interpVSetter :: Value -> ModuleId -> State -> (Value,[IO Value],State)
-interpVSetter (VSetter label i [x1,x2]) mid m = let
-    -- obj to search in 
-    (v1,os,m') = interpX x2 mid m
-    -- item to search for
-    (v2,os',m'') = interpX x1 mid m'
+interpVSetter (VSetter label i [v1,v2]) mid m = let
     errMsg = "Failed to set `" ++ label ++ "` member."
     in case v1 of
-        vptr@(VPtr _) -> case getFromHeap vptr m'' of
+        vptr@(VPtr _) -> case getFromHeap vptr m of
             (VObj label' mbs) ->
                 if label == label' then let
                     mbs' = updateList mbs v2 i
                     obj' = (VObj label' mbs')
-                    m''' = mapToHeap vptr obj' m''
-                    in (VVoid,os++os',m''')
+                    m' = mapToHeap vptr obj' m
+                    in (VVoid,[],m')
                 else
                     error errMsg
             _ -> error errMsg
         _ -> error errMsg
     
 
-interpShow :: Expr -> ModuleId -> State -> (Value,[IO Value],State)
-interpShow x mid m = 
-    let (v,os,m')  = interpX x mid m 
-        s          = map VChar $ aux v m'
-        (vptr,m'') = allocateArray s m'
-    in
-    (vptr,os,m'') where
+-- shows the value, maps it to the heap, and returns a ptr
+showMapValue :: Value -> State -> (Value,State)
+showMapValue v m = let
+    s = showValue v m
+    s' = map VChar $ s
+    (vptr,m') = allocateArray s' m
+    in (vptr,m')
+
+-- shows the value to a haskell string
+showValue :: Value -> State -> String
+showValue v m = aux v m where
     aux v m = 
         case v of
             VInt i      -> show i

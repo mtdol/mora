@@ -195,6 +195,9 @@ def =
                                       , "^'"
                                       , "!!"
                                       , "!'"
+                                      , "?"
+                                      , "?'"
+                                      , "??"
                                       , ">'"
                                       , "<'"
                                       , ">>"
@@ -248,6 +251,9 @@ customOpList = [
     , "/='"
     , "!!"
     , "!'"
+    , "??"
+    , "?'"
+    , "?'"
     , "$$"
     , "$'"
     , ">>='"
@@ -277,6 +283,9 @@ operators = [
                 Infix   (reservedOp "!'" >> return (Op2 "!'")) AssocLeft,
                 Infix   (reservedOp "!!" >> return (Op2 "!!")) AssocLeft,
                 Infix   (reservedOp "!" >> return (Op2 "!")) AssocLeft,
+                Infix   (reservedOp "?'" >> return (Op2 "?'")) AssocLeft,
+                Infix   (reservedOp "??" >> return (Op2 "??")) AssocLeft,
+                Infix   (reservedOp "?" >> return (Op2 "?")) AssocLeft,
                 Infix   
                     (do 
                         v <- infixVar

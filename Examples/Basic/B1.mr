@@ -5,7 +5,7 @@ fn main {
     x <- 3;
     y <- x + 1; {- assigns 4 to y -}
     printLn $ y*2; -- prints 8
-    putLn g;
+    putLn g; -- prints "abc"
 
     return 0;
 }

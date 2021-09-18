@@ -1,5 +1,6 @@
 module excluding () {
     op ++   append;
+    op :    Cons;
 }
 
 data Maybe a := 
@@ -80,6 +81,9 @@ fn vmap f a {
         i +< 1;
     }
 }
+
+fn index a i -> a ! i;
+fn setArray a i v {a ! i <- v;}
 
 --append :: Array a -> Array a -> Array a;
 fn append a1 a2 {
@@ -319,12 +323,15 @@ fn lappend xs ys ->
     }
 ;
 
-fn lfilter f xs ->
-    case xs {
+fn lfilter f xs -> case xs {
         x:xs -> if f x then x : lfilter f xs else lfilter f xs;
         Null -> Null;
-    }
-;
+};
+
+fn lelem xs e -> case xs {
+    Null -> False;
+    x:xs -> if x = e then True else lelem xs e;
+};
 
 -- TODO: test this
 --lreverse :: List a -> List a;

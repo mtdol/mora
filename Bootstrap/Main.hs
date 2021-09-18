@@ -155,7 +155,7 @@ run im text m mid prjloc args = do
         in (c,g',h)
 
 -- only parses
-run' _ text _ _ _ _ = print $ fst $ readProg text
+run' _ (Just text) _ _ _ _ = print $ snd $ readProg text
 
 -- Looks for the path of the given module.
 -- First checks the directory where `Main` is (the project directory), 
