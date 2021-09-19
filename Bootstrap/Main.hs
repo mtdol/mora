@@ -1,3 +1,8 @@
+{-
+Mora Interpreter
+Matthew Dolinka
+-}
+
 module Main where
 
 import System.Environment

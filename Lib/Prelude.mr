@@ -367,6 +367,15 @@ fn lmap f xs {
     }
 }
 
+-- void map
+--lvmap :: (a -> b) -> List a -> Void;
+fn lvmap f xs {
+    Case xs {
+        Null -> {}
+        x:xs -> {f x; f `lvmap` xs;}
+    }
+}
+
 fn lzip xs ys ->
     case (xs,ys) {
         (Null,_) -> Null;
