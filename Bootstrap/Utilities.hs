@@ -1,17 +1,18 @@
 module Utilities where
 
 import qualified Data.Set as Set
-import Parse
 
+import Parse
+import Error
 
 -- gets all labels from a `Dec` statement
 -- ignore type declarations
-getDecLabels (Op2 "::" x _) = getDecLabels x
-getDecLabels (Op2 "," x1 x2) = getDecLabels x1 ++ getDecLabels x2
-getDecLabels (Var label) = [label]
+getDecLabels (Op2 "::" ni x _) = getDecLabels x
+getDecLabels (Op2 "," ni x1 x2) = getDecLabels x1 ++ getDecLabels x2
+getDecLabels (Var _ label) = [label]
 
 getDTLabels :: Stmt -> [Label]
-getDTLabels (DType _ _ elems) = aux elems
+getDTLabels (DType ni _ _ elems) = aux elems
  where
     aux :: [DTypeElem] -> [Label]
     aux [] = []

@@ -7,6 +7,7 @@ import Parse
 import qualified Data.Set as Set
 import Interp (preloadedLabels)
 import Utilities
+import Error
 
 
 --
@@ -24,11 +25,11 @@ reject msg = Left msg
 
 
 
-checkContains :: Defs -> [Label] -> Either String Bool
-checkContains _ [] = accept
-checkContains m (label:labels) = 
+checkContains :: NodeInfo -> ModuleId -> Defs -> [Label] -> Either String Bool
+checkContains ni mid _ [] = accept
+checkContains ni mid m (label:labels) = 
         if label `Set.member` m 
-            then genDupErr label else checkContains m labels
+            then genDupErr ni mid label else checkContains ni mid m labels
 
 
 --
@@ -36,83 +37,89 @@ checkContains m (label:labels) =
 --
 
 -- returns `Left errMsg` if the Expr is not well formed, else `Right True`
-wellFormed :: Program -> Either String Bool
-wellFormed p = do
+wellFormed :: Program -> ModuleId -> Either String Bool
+wellFormed p mid = do
     -- no duplicate var declarations in a block
-    dupDecs p emptyDefs
+    dupDecs p emptyDefs mid
     -- all vars must be declared and defined before use
-    topLevel p
+    topLevel p mid
     -- ensure that we have no `op`, `data`, or `type` in non-top-level
-    lowLevel p
+    lowLevel p mid
 
 -- `Left errMsg` if there are duplicate declarations, otherwise `Right True`
-dupDecs :: Seq -> Defs -> Either String Bool
-dupDecs (Seq ((Dec x):ss)) m = do
+dupDecs :: Seq -> Defs -> ModuleId -> Either String Bool
+dupDecs (Seq ((Dec ni x):ss)) m mid = do
     let labels = getDecLabels x
     -- no duplicates allowed
     let dups = getDuplicates labels
     if not $ null dups 
-        then genDupErr $ head dups
+        then genDupErr ni mid $ head dups
         else accept
-    checkContains m labels
+    checkContains ni mid m labels
     let m' = foldr Set.insert m labels
-    dupDecs (Seq ss) m'
-dupDecs (Seq ((DecAssign label _):ss)) m =
+    dupDecs (Seq ss) m' mid
+dupDecs (Seq ((DecAssign ni label _):ss)) m mid =
     if label `Set.member` m then
-        genDupErr label
-    else dupDecs (Seq ss) (label `Set.insert` m)
-dupDecs (Seq (dt@(DType _ _ _):ss)) m = do
+        genDupErr ni mid label
+    else dupDecs (Seq ss) (label `Set.insert` m) mid
+dupDecs (Seq (dt@(DType ni _ _ _):ss)) m mid = do
     let labels = getDTLabels dt
     let dups = getDuplicates labels
     if not $ null dups 
-        then genDupErr $ head dups
+        then genDupErr ni mid $ head dups
         else accept
-    checkContains m labels
+    checkContains ni mid m labels
     let m' = foldr Set.insert m labels
-    dupDecs (Seq ss) m'
+    dupDecs (Seq ss) m' mid
 
-dupDecs (Seq ((Block ss1):ss)) m = do 
-    dupDecs ss1 emptyDefs
-    dupDecs (Seq ss) m
-dupDecs (Seq ((If _ ss1 ss2):ss)) m = do 
-    dupDecs ss1 emptyDefs
-    dupDecs ss2 emptyDefs
-    dupDecs (Seq ss) m
-dupDecs (Seq ((While _ ss1):ss)) m = do 
-    dupDecs ss1 emptyDefs
-    dupDecs (Seq ss) m
+dupDecs (Seq ((Block ni ss1):ss)) m mid = do 
+    dupDecs ss1 emptyDefs mid
+    dupDecs (Seq ss) m mid
+dupDecs (Seq ((If ni _ ss1 ss2):ss)) m mid = do 
+    dupDecs ss1 emptyDefs mid
+    dupDecs ss2 emptyDefs mid
+    dupDecs (Seq ss) m mid
+dupDecs (Seq ((While ni _ ss1):ss)) m mid = do 
+    dupDecs ss1 emptyDefs mid
+    dupDecs (Seq ss) m mid
 -- ok if the function label is redefined in the function body
-dupDecs (Seq ((Fn flabel fps fss):ss)) m = do
+dupDecs (Seq ((Fn ni flabel fps fss):ss)) m mid = do
     if flabel `Set.member` m then
-        reject $ "Duplicate function definition for `" ++ flabel ++ "`."
+        reject $ makeErrMsg ni mid
+            $ "Duplicate function definition for `" ++ flabel ++ "`."
         else accept 
     let dups = getDuplicates $ flabel : fps
     if not $ null dups 
-        then reject $ "Duplicate function parameter `" ++ head dups 
+        then reject $ makeErrMsg ni mid
+            $ "Duplicate function parameter `" ++ head dups 
             ++ "` for function `" ++ flabel ++ "`."
         else accept
-    dupDecs fss (Set.fromList fps)
-    dupDecs (Seq ss) (flabel `Set.insert` m)
-dupDecs (Seq (_:ss)) m = dupDecs (Seq ss) m
-dupDecs (Seq []) _ = accept      
+    dupDecs fss (Set.fromList fps) mid
+    dupDecs (Seq ss) (flabel `Set.insert` m) mid
+dupDecs (Seq (_:ss)) m mid = dupDecs (Seq ss) m mid
+dupDecs (Seq []) _ mid = accept      
  where
-genDupErr label = 
-    reject $ "Duplicate declaration for `" ++ label ++ "`."
+genDupErr ni mid label = 
+    reject $ makeErrMsg ni mid
+        $ "Duplicate declaration for `" ++ label ++ "`."
 
 -- ensures that the top-level is well-formed
-topLevel :: Seq -> Either String Bool
-topLevel (Seq []) = accept
-topLevel (Seq ((Dec _):ss)) =
-    reject $ "No declarations allowed on the top-level without an assignment."
-topLevel (Seq (s:ss)) = topLevel (Seq ss)
+topLevel :: Seq -> ModuleId -> Either String Bool
+topLevel (Seq []) mid = accept
+topLevel (Seq ((Dec ni _):ss)) mid =
+    reject $ makeErrMsg ni mid
+        $ "No declarations allowed on the top-level without an assignment."
+topLevel (Seq (s:ss)) mid = topLevel (Seq ss) mid
 
-lowLevel :: Program -> Either String Bool
-lowLevel p = do 
-    checkLowLevel f p
+lowLevel :: Program -> ModuleId -> Either String Bool
+lowLevel p mid = do 
+    checkLowLevel (f mid) p
  where
-    f (TypeAlias _ _) = reject $ "Type aliases not allowed in low-level."
-    f (DType _ _ _) = reject $ "Data type def not allowed in low-level."
-    f s = accept
+    f mid (TypeAlias ni _ _) = reject $ makeErrMsg ni mid
+        $ "Type aliases not allowed in low-level."
+    f mid (DType ni _ _ _) = reject $ makeErrMsg ni mid
+        $ "Data type def not allowed in low-level."
+    f mid s = accept
 
 -- runs over the low level of the parse tree applies `f` to each statement
 checkLowLevel :: (Stmt -> Either String Bool) -> Seq -> Either String Bool
@@ -122,22 +129,22 @@ checkLowLevel f (Seq (s:ss)) = do
     checkLowLevel f (Seq ss)
 
 checkLowLevelS :: (Stmt -> Either String Bool) -> Stmt -> Either String Bool
-checkLowLevelS f NOP = accept
-checkLowLevelS f (Stmt x) = accept
-checkLowLevelS f (Block ss) = aux f ss
-checkLowLevelS f (If x ss1 ss2) = aux f ss1 >> aux f ss2
-checkLowLevelS f (Fn flabel fps fss) = aux f fss
-checkLowLevelS f (DType _ _ _) = accept
-checkLowLevelS f (TypeAlias _ _) = accept
-checkLowLevelS f (While x ss) = aux f ss
-checkLowLevelS f (Case x elems) = casef f elems
+checkLowLevelS f (NOP _) = accept
+checkLowLevelS f (Stmt ni x) = accept
+checkLowLevelS f (Block ni ss) = aux f ss
+checkLowLevelS f (If ni x ss1 ss2) = aux f ss1 >> aux f ss2
+checkLowLevelS f (Fn ni flabel fps fss) = aux f fss
+checkLowLevelS f (DType ni _ _ _) = accept
+checkLowLevelS f (TypeAlias ni _ _) = accept
+checkLowLevelS f (While ni x ss) = aux f ss
+checkLowLevelS f (Case ni x elems) = casef f elems
  where
     casef f [] = accept
     casef f ((_,ss):elems) = aux f ss >> casef f elems
-checkLowLevelS f (Dec _) = accept
-checkLowLevelS f (DecAssign _ _) = accept
-checkLowLevelS f (Assign _ _) = accept
-checkLowLevelS f (Return _) = accept
+checkLowLevelS f (Dec ni _) = accept
+checkLowLevelS f (DecAssign ni _ _) = accept
+checkLowLevelS f (Assign ni _ _) = accept
+checkLowLevelS f (Return ni _) = accept
  where
 aux :: (Stmt -> Either String Bool) -> Seq -> Either String Bool
 aux f (Seq []) = accept

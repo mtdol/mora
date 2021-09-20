@@ -1,6 +1,7 @@
 module Desugar (desugar) where
 
 import Parse
+import Error
 
 desugar :: Program -> Program
 desugar p = let
@@ -17,34 +18,35 @@ liftFns ss i = ss
 --  `dec n; dec x; x :: t; dec y;`
 simpleDecs :: Seq -> Seq
 simpleDecs ss@(Seq []) = ss
-simpleDecs (Seq ((Dec x):ss)) = let
+simpleDecs (Seq ((Dec ni x):ss)) = let
     decs = aux x
     (Seq ss') = simpleDecs (Seq ss)
     in Seq (decs ++ ss')
  where
     aux :: Expr -> [Stmt]
-    aux x@(Var label) = [Dec x]
-    aux x@(Op2 "::" (Var label) tx) = [Dec (Var label), Stmt x]
-    aux (Op2 "," x1 x2) = aux x1 ++ aux x2
-simpleDecs (Seq ((Block ss1):ss)) = let 
-    s'  = Block (simpleDecs ss1)
+    aux x@(Var ni label) = [Dec ni x]
+    aux x@(Op2 "::" ni (Var vni label) tx) = 
+        [Dec ni (Var vni label), Stmt ni x]
+    aux (Op2 "," ni x1 x2) = aux x1 ++ aux x2
+simpleDecs (Seq ((Block ni ss1):ss)) = let 
+    s'  = Block ni (simpleDecs ss1)
     (Seq ss') = simpleDecs (Seq ss)
     in Seq $ s' : ss'
-simpleDecs (Seq ((If x ss1 ss2):ss)) = let 
-    s'  = If x (simpleDecs ss1) (simpleDecs ss2)
+simpleDecs (Seq ((If ni x ss1 ss2):ss)) = let 
+    s'  = If ni x (simpleDecs ss1) (simpleDecs ss2)
     (Seq ss') = simpleDecs (Seq ss)
     in Seq $ s' : ss'
-simpleDecs (Seq ((Fn flabel fps fss):ss)) = let 
-    s'  = Fn flabel fps (simpleDecs fss)
+simpleDecs (Seq ((Fn ni flabel fps fss):ss)) = let 
+    s'  = Fn ni flabel fps (simpleDecs fss)
     (Seq ss') = simpleDecs (Seq ss)
     in Seq $ s' : ss'
-simpleDecs (Seq ((While x ss1):ss)) = let 
-    s'  = While x (simpleDecs ss1)
+simpleDecs (Seq ((While ni x ss1):ss)) = let 
+    s'  = While ni x (simpleDecs ss1)
     (Seq ss') = simpleDecs (Seq ss)
     in Seq $ s' : ss'
-simpleDecs (Seq ((Case x elems):ss)) = let 
+simpleDecs (Seq ((Case ni x elems):ss)) = let 
     elems' = map (\(px, ss) -> (px, simpleDecs ss)) elems
-    s' = Case x elems'
+    s' = Case ni x elems'
     (Seq ss') = simpleDecs (Seq ss)
     in Seq $ s' : ss'
 simpleDecs (Seq (s:ss)) = let
@@ -62,54 +64,57 @@ relabel (Seq (s:ss)) ol nl = let
     in (Seq (s':ss'))
 
 relabelS :: Stmt -> Label -> Label -> Stmt
-relabelS NOP ol nl = NOP
-relabelS (Block ss) ol nl = Block (relabel ss ol nl)
-relabelS (Stmt x) ol nl = Stmt (relabelX x ol nl)
-relabelS (If x ss1 ss2) ol nl = 
-    If (relabelX x ol nl) (relabel ss1 ol nl) (relabel ss2 ol nl)
-relabelS dt@(DType _ _ _) ol nl = dt
-relabelS ta@(TypeAlias _ _) ol nl = ta
-relabelS (While x ss) ol nl = While (relabelX x ol nl) (relabel ss ol nl)
-relabelS (Case x elems) ol nl = let
+relabelS s@(NOP _) ol nl = s
+relabelS (Block ni ss) ol nl = Block ni (relabel ss ol nl)
+relabelS (Stmt ni x) ol nl = Stmt ni (relabelX x ol nl)
+relabelS (If ni x ss1 ss2) ol nl = 
+    If ni (relabelX x ol nl) (relabel ss1 ol nl) (relabel ss2 ol nl)
+relabelS dt@(DType _ _ _ _) ol nl = dt
+relabelS ta@(TypeAlias _ _ _) ol nl = ta
+relabelS (While ni x ss) ol nl = 
+    While ni (relabelX x ol nl) (relabel ss ol nl)
+relabelS (Case ni x elems) ol nl = let
     elems' = map (\(px, ss) -> (px, relabel ss ol nl)) elems
     x' = relabelX x ol nl
-    in Case x' elems'
-relabelS (Dec x) ol nl = (Dec x)
-relabelS (DecAssign label x) ol nl = 
-    (DecAssign label (relabelX x ol nl))
-relabelS (Assign x1 x2) ol nl = 
-    (Assign (relabelX x1 ol nl) (relabelX x2 ol nl))
-relabelS (Return x) ol nl = (Return (relabelX x ol nl))
+    in Case ni x' elems'
+relabelS (Dec ni x) ol nl = (Dec ni x)
+relabelS (DecAssign ni label x) ol nl = 
+    (DecAssign ni label (relabelX x ol nl))
+relabelS (Assign ni x1 x2) ol nl = 
+    Assign ni (relabelX x1 ol nl) (relabelX x2 ol nl)
+relabelS (Return ni x) ol nl = 
+    Return ni (relabelX x ol nl)
 
-relabelS (Fn label ss1 ss2) ol nl = 
-    error $ "Desugar->relabel: Cannot relabel fn."
+relabelS (Fn ni label ss1 ss2) ol nl = 
+    error $ makeErrMsgNI ni $ "Desugar->relabel: Cannot relabel fn."
 --relabelS s _ _ = error $ "Desugar->relabel: Unknown stmt:\n" ++ show s
 
 
 relabelX :: Expr -> Label -> Label -> Expr
-relabelX (Var label) ol nl | label == ol = (Var nl)
-relabelX (Var label) ol nl = (Var label)
-relabelX x@(PInt _) _ _ = x
-relabelX x@(PFloat _) _ _ = x
-relabelX x@(PString _) _ _ = x
-relabelX x@(PChar _) _ _ = x
-relabelX x@(PVoid) _ _ = x
+relabelX (Var ni label) ol nl | label == ol = (Var ni nl)
+relabelX (Var ni label) ol nl = (Var ni label)
+relabelX x@(PInt _ _) _ _ = x
+relabelX x@(PFloat _ _) _ _ = x
+relabelX x@(PBool _ _) _ _ = x
+relabelX x@(PString _ _) _ _ = x
+relabelX x@(PChar _ _) _ _ = x
+relabelX x@(PVoid _) _ _ = x
 
-relabelX x@(PArray _) _ _ = x
-relabelX x@(PTuple _) _ _ = x
-relabelX (Ap x1 x2) ol nl = Ap (relabelX x1 ol nl) (relabelX x2 ol nl)
-relabelX (ApNull x) ol nl = ApNull (relabelX x ol nl)
-relabelX (IfX x1 x2 x3) ol nl = 
-    IfX (relabelX x1 ol nl) (relabelX x2 ol nl) (relabelX x3 ol nl) 
-relabelX (CaseX x elems) ol nl = let
+relabelX x@(PArray _ _) _ _ = x
+relabelX x@(PTuple _ _) _ _ = x
+relabelX (Ap ni x1 x2) ol nl = Ap ni (relabelX x1 ol nl) (relabelX x2 ol nl)
+relabelX (ApNull ni x) ol nl = ApNull ni (relabelX x ol nl)
+relabelX (IfX ni x1 x2 x3) ol nl = 
+    IfX ni (relabelX x1 ol nl) (relabelX x2 ol nl) (relabelX x3 ol nl) 
+relabelX (CaseX ni x elems) ol nl = let
     elems' = map (\(px, x) -> (px, relabelX x ol nl)) elems
     x' = relabelX x ol nl
-    in CaseX x' elems'
-relabelX (Op2 op x1 x2) ol nl = 
-    Op2 op (relabelX x1 ol nl) (relabelX x2 ol nl)
-relabelX (Op1 op x) ol nl = 
-    Op1 op (relabelX x ol nl)
+    in CaseX ni x' elems'
+relabelX (Op2 op ni x1 x2) ol nl = 
+    Op2 op ni (relabelX x1 ol nl) (relabelX x2 ol nl)
+relabelX (Op1 op ni x) ol nl = 
+    Op1 op ni (relabelX x ol nl)
 
-relabelX (Lambda _ _) _ _ = 
+relabelX (Lambda ni _ _) _ _ = 
     error $ "Desugar->relabel: Cannot relabel Lambdas."
-relabelX x _ _ = error $ "Desugar->relabel: Unknown expr:\n" ++ show x
+--relabelX x _ _ = error $ "Desugar->relabel: Unknown expr:\n" ++ show x

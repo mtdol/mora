@@ -28,5 +28,7 @@ fn f x {
 perhaps lift the sub-procs to the global space (to allow recursion)
     and then do static variable renaming
 
+- improve error messages for pattern matching
+
 
 - allow file manipulation, probably with file handles

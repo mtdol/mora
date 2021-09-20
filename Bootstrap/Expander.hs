@@ -1,104 +1,111 @@
 module Expander (expand) where
 
-import Parse
 import qualified Data.Map as Map
+
+import Parse
+import Error
 
 type Ops = Map.Map Label Label
 
 -- applies ops onto ast
-expand :: Program -> [ModuleStmt] -> Program
-expand p ops = let
+expand :: Program -> [ModuleStmt] -> ModuleId -> Program
+expand p ops mid = let
     ops' = foldr (\(OpDec op label) acc -> Map.insert op label acc) 
                  Map.empty ops
-    in expandSeq p ops'
+    in expandSeq p ops' mid
 
-expandSeq :: Seq -> Ops -> Seq
-expandSeq (Seq []) ops = (Seq [])
-expandSeq (Seq (s:ss)) ops = let
-    s' = expandS s ops
-    (Seq ss') = expandSeq (Seq ss) ops
+expandSeq :: Seq -> Ops -> ModuleId -> Seq
+expandSeq (Seq []) ops mid = (Seq [])
+expandSeq (Seq (s:ss)) ops mid = let
+    s' = expandS s ops mid
+    (Seq ss') = expandSeq (Seq ss) ops mid
     in Seq (s':ss')
 
-expandS :: Stmt -> Ops -> Stmt
-expandS NOP ops = NOP
-expandS (Block ss) ops = Block $ expandSeq ss ops
-expandS (Stmt x) ops = Stmt $ expandX x ops
-expandS (If x ss1 ss2) ops = 
-    If (expandX x ops) (expandSeq ss1 ops) (expandSeq ss2 ops)
-expandS (Fn fl fps fss) ops = 
-    Fn fl fps $ expandSeq fss ops
-expandS dt@(DType _ _ _) ops = dt
-expandS ta@(TypeAlias _ _) ops = ta
-expandS (While x ss) ops = 
-    While (expandX x ops) (expandSeq ss ops)
+expandS :: Stmt -> Ops -> ModuleId -> Stmt
+expandS s@(NOP _) ops mid = s
+expandS (Block ni ss) ops mid = Block ni $ expandSeq ss ops mid
+expandS (Stmt ni x) ops mid = Stmt ni $ expandX x ops mid
+expandS (If ni x ss1 ss2) ops mid = 
+    If ni (expandX x ops mid) (expandSeq ss1 ops mid) (expandSeq ss2 ops mid)
+expandS (Fn ni fl fps fss) ops mid = 
+    Fn ni fl fps $ expandSeq fss ops mid
+expandS dt@(DType _ _ _ _) ops mid = dt
+expandS ta@(TypeAlias _ _ _) ops mid = ta
+expandS (While ni x ss) ops mid = 
+    While ni (expandX x ops mid) (expandSeq ss ops mid)
 
-expandS (Case x pss) ops = Case (expandX x ops) (aux pss ops)
+expandS (Case ni x pss) ops mid = 
+    Case ni (expandX x ops mid) (aux pss ops mid)
  where
-    aux [] ops = []
-    aux ((px, ss):pes) ops = 
-        (expandP px ops, expandSeq ss ops) : aux pes ops
+    aux [] ops mid = []
+    aux ((px, ss):pes) ops mid = 
+        (expandP px ops mid, expandSeq ss ops mid) : aux pes ops mid
 
-expandS (Dec x) ops = Dec $ expandX x ops
-expandS (DecAssign label x) ops = DecAssign label $ expandX x ops
-expandS (Assign x1 x2) ops = 
-    Assign (expandX x1 ops) (expandX x2 ops)
-expandS (Return x) ops = Return $ expandX x ops
+expandS (Dec ni x) ops mid = Dec ni $ expandX x ops mid
+expandS (DecAssign ni label x) ops mid = 
+    DecAssign ni label $ expandX x ops mid
+expandS (Assign ni x1 x2) ops mid = 
+    Assign ni (expandX x1 ops mid) (expandX x2 ops mid)
+expandS (Return ni x) ops mid = Return ni $ expandX x ops mid
 
-expandX :: Expr -> Ops -> Expr
-expandX v@(Var _) ops = v
-expandX v@(PInt _) ops = v
-expandX v@(PFloat _) ops = v
-expandX v@(PString _) ops = v
-expandX v@(PChar _) ops = v
-expandX v@(PBool _) ops = v
-expandX v@(PArray _) ops = v
-expandX v@(PTuple _) ops = v
-expandX v@(PVoid) ops = v
-expandX (Ap x1 x2) ops = Ap (expandX x1 ops) (expandX x2 ops)
-expandX (ApNull x) ops = ApNull (expandX x ops)
-expandX (IfX x1 x2 x3) ops = 
-    IfX (expandX x1 ops) (expandX x2 ops) (expandX x3 ops)
-expandX (Lambda ps ss) ops = 
-    Lambda ps (expandSeq ss ops)
-expandX (CaseX x1 pes) ops = 
-    CaseX (expandX x1 ops) (aux pes ops)
+expandX :: Expr -> Ops -> ModuleId -> Expr
+expandX v@(Var _ _) ops mid = v
+expandX v@(PInt _ _) ops mid = v
+expandX v@(PFloat _ _) ops mid = v
+expandX v@(PString _ _) ops mid = v
+expandX v@(PChar _ _) ops mid = v
+expandX v@(PBool _ _) ops mid = v
+expandX v@(PArray _ _) ops mid = v
+expandX v@(PTuple _ _) ops mid = v
+expandX v@(PVoid _) ops mid = v
+expandX (Ap ni x1 x2) ops mid = 
+    Ap ni (expandX x1 ops mid) (expandX x2 ops mid)
+expandX (ApNull ni x) ops mid = ApNull ni (expandX x ops mid)
+expandX (IfX ni x1 x2 x3) ops mid = 
+    IfX ni (expandX x1 ops mid) (expandX x2 ops mid) (expandX x3 ops mid)
+expandX (Lambda ni ps ss) ops mid = 
+    Lambda ni ps (expandSeq ss ops mid)
+expandX (CaseX ni x1 pes) ops mid = 
+    CaseX ni (expandX x1 ops mid) (aux pes ops mid)
  where
-    aux [] ops = []
-    aux ((px,x):pes) ops = 
-        (expandP px ops, expandX x ops) : aux pes ops
-
+    aux [] ops mid = []
+    aux ((px,x):pes) ops mid = 
+        (expandP px ops mid, expandX x ops mid) : aux pes ops mid
+--TODO: replace with actual node info
 -- here's where the magic happens
-expandX (Op1 label x1) ops | label `Map.member` ops =
-    Ap (Var (ops Map.! label)) (expandX x1 ops)
-expandX (Op1 label x1) ops = Op1 label $ expandX x1 ops
-expandX (Op2 label x1 x2) ops | label `Map.member` ops =
-    Ap (Ap (Var (ops Map.! label)) (expandX x1 ops)) (expandX x2 ops)
-expandX (Op2 label x1 x2) ops = 
-    Op2 label (expandX x1 ops) (expandX x2 ops)
+expandX (Op1 label ni x1) ops mid | label `Map.member` ops =
+    Ap ni (Var ni (ops Map.! label)) (expandX x1 ops mid)
+expandX (Op1 label ni x1) ops mid = Op1 label ni $ expandX x1 ops mid
+expandX (Op2 label ni x1 x2) ops mid | label `Map.member` ops =
+    Ap ni (Ap ni (Var ni (ops Map.! label))
+    (expandX x1 ops mid)) (expandX x2 ops mid)
+expandX (Op2 label ni x1 x2) ops mid = 
+    Op2 label ni (expandX x1 ops mid) (expandX x2 ops mid)
 
 
-expandP :: PatExpr -> Ops -> PatExpr
-expandP px@(PatVar _) ops = px
-expandP px@(PatInt _) ops = px
-expandP px@(PatFloat _) ops = px
-expandP px@(PatString _) ops = px
-expandP px@(PatChar _) ops = px
-expandP px@(PatBool _) ops = px
-expandP px@(PatVoid) ops = px
-expandP (PatArray pxs) ops = 
-    PatArray $ map (\px -> expandP px ops) pxs
-expandP (PatTuple pxs) ops = 
-    PatTuple $ map (\px -> expandP px ops) pxs
-expandP (PatAp px1 px2) ops = 
-    PatAp (expandP px1 ops) (expandP px2 ops)
-expandP (AsPattern label px) ops = 
-    AsPattern label (expandP px ops)
+expandP :: PatExpr -> Ops -> ModuleId -> PatExpr
+expandP px@(PatVar _ _) ops mid = px
+expandP px@(PatInt _ _) ops mid = px
+expandP px@(PatFloat _ _) ops mid = px
+expandP px@(PatString _ _) ops mid = px
+expandP px@(PatChar _ _) ops mid = px
+expandP px@(PatBool _ _) ops mid = px
+expandP px@(PatVoid _) ops mid = px
+expandP (PatArray ni pxs) ops mid = 
+    PatArray ni $ map (\px -> expandP px ops mid) pxs
+expandP (PatTuple ni pxs) ops mid = 
+    PatTuple ni $ map (\px -> expandP px ops mid) pxs
+expandP (PatAp ni px1 px2) ops mid = 
+    PatAp ni (expandP px1 ops mid) (expandP px2 ops mid)
+expandP (AsPattern ni label px) ops mid = 
+    AsPattern ni label (expandP px ops mid)
 -- more magic
-expandP (PatOp2 label px1 px2) ops | label `Map.member` ops = let
-    px1' = expandP px1 ops
-    px2' = expandP px2 ops
-    trg  = PatVar $ ops Map.! label
+expandP (PatOp2 label ni px1 px2) ops mid | label `Map.member` ops = let
+    px1' = expandP px1 ops mid
+    px2' = expandP px2 ops mid
+    trg  = PatVar ni $ ops Map.! label
     in
-    PatAp (PatAp trg px1') px2'
-expandP (PatOp2 label px1 px2) ops =
-    error $ "Expander: Could not find op: `" ++ label ++ "`."
+    PatAp ni (PatAp ni trg px1') px2'
+expandP (PatOp2 label ni px1 px2) ops mid =
+    error $ makeErrMsg ni mid 
+        $ "Expander: Could not find op: `" ++ label ++ "`."

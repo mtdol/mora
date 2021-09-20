@@ -1,4 +1,11 @@
+{-# OPTIONS_GHC -cpp #-}
+
+-- makes a `NodeInfo`
+#define MKNI (getPosition >>= \sp -> return $ NodeInfo (sourceLine sp) (sourceColumn sp))
+-- shorthand for application of MKNI
+#define APMKNI MKNI >>= \ni ->
 module Parse where
+
 
 import Control.Monad
 import Text.ParserCombinators.Parsec
@@ -9,16 +16,20 @@ import qualified Text.ParserCombinators.Parsec.Token as Token
 import qualified Data.Char as Char
 import qualified Data.Set as Set
 
+import Error
+
+type ModuleId = String
+
 data Seq = Seq [Stmt]
     deriving (Show, Eq, Ord)
 
 data Stmt = 
-      NOP 
-    | Block Seq -- a code block
-    | Stmt Expr
-    | If Expr Seq Seq
-    --   Name   Params   Body
-    | Fn Label [Label] Seq 
+      NOP NodeInfo
+    | Block NodeInfo Seq -- a code block
+    | Stmt NodeInfo Expr
+    | If NodeInfo Expr Seq Seq
+    --            Name  Params  Body
+    | Fn NodeInfo Label [Label] Seq 
     -- `List a := Cons val :: a, next :: List a | Null`
     -- -> DType "List" [(Var "a")] Elems;
     -- Elems -> 
@@ -27,56 +38,56 @@ data Stmt =
     --  , ("Null", [])
     --  ]
     --
-    --      type cons name  type vars   see below 
-    | DType String          [String]    [DTypeElem]
+    --               type cons name  type vars   see below 
+    | DType NodeInfo String          [String]    [DTypeElem]
     -- type String := List Char;
     --  -> TypeAlias "String" (Ap (Var "List") (Var "Char"))
     --
     --
-    | TypeAlias Label Expr
-    | While Expr Seq
-    | Case Expr [CaseStmtElem]
-    | Dec Expr
-    | DecAssign Label Expr
-    | Assign Expr Expr
-    | Return Expr
+    | TypeAlias NodeInfo Label Expr
+    | While NodeInfo Expr Seq
+    | Case NodeInfo Expr [CaseStmtElem]
+    | Dec NodeInfo Expr
+    | DecAssign NodeInfo Label Expr
+    | Assign NodeInfo Expr Expr
+    | Return NodeInfo Expr
     deriving (Show, Eq, Ord)
 
 data Expr = 
-      Var String
-    | PInt Integer
-    | PFloat Double
-    | PString String
-    | PChar Char
-    | PBool Bool
-    | PArray [Expr]
-    | PTuple [Expr]
-    | PVoid
-    | Ap Expr Expr
-    | ApNull Expr 
-    | IfX Expr Expr Expr -- If expr
-    --       params   body
-    | Lambda [Label] Seq
-    | CaseX Expr [CaseExprElem]
-    | Op1 Label Expr
-    | Op2 Label Expr Expr
+      Var NodeInfo String
+    | PInt NodeInfo Integer
+    | PFloat NodeInfo Double
+    | PString NodeInfo String
+    | PChar NodeInfo Char
+    | PBool NodeInfo Bool
+    | PArray NodeInfo [Expr]
+    | PTuple NodeInfo [Expr]
+    | PVoid NodeInfo
+    | Ap NodeInfo Expr Expr
+    | ApNull NodeInfo Expr 
+    | IfX NodeInfo Expr Expr Expr -- If expr
+    --                params   body
+    | Lambda NodeInfo [Label] Seq
+    | CaseX NodeInfo Expr [CaseExprElem]
+    | Op1 Label NodeInfo Expr
+    | Op2 Label NodeInfo Expr Expr
     deriving (Show, Eq, Ord)
 
 data PatExpr = 
-      PatVar String
-    | PatInt Integer
-    | PatFloat Double
-    | PatString String
-    | PatChar Char
-    | PatBool Bool
-    | PatVoid
-    | PatArray [PatExpr]
-    | PatTuple [PatExpr]
-    | PatAp PatExpr PatExpr
+      PatVar NodeInfo String
+    | PatInt NodeInfo Integer
+    | PatFloat NodeInfo Double
+    | PatString NodeInfo String
+    | PatChar NodeInfo Char
+    | PatBool NodeInfo Bool
+    | PatVoid NodeInfo
+    | PatArray NodeInfo [PatExpr]
+    | PatTuple NodeInfo [PatExpr]
+    | PatAp NodeInfo PatExpr PatExpr
     -- ":" operator probably
-    | PatOp2 String PatExpr PatExpr
+    | PatOp2 String NodeInfo PatExpr PatExpr
     -- for example: `tp@(1,2,3)`
-    | AsPattern String PatExpr
+    | AsPattern NodeInfo String PatExpr
     deriving (Show, Eq, Ord)
 
 data ModuleData = 
@@ -274,95 +285,96 @@ customOp = choice (map getReservedOp customOpList)
 
 operators = [  
                [
-                Infix   (reservedOp ""  >> return (Ap)) AssocLeft,
-                Postfix (reservedOp "()"  >> return (ApNull))
+                Infix   (APMKNI reservedOp ""  >> return (Ap ni)) AssocLeft,
+                Postfix (APMKNI reservedOp "()"  >> return (ApNull ni))
                 ]
             ,  [
-                Prefix  (reservedOp "-" >> return (Op1 "-")),
-                Infix   (reservedOp "!'" >> return (Op2 "!'")) AssocLeft,
-                Infix   (reservedOp "!!" >> return (Op2 "!!")) AssocLeft,
-                Infix   (reservedOp "!" >> return (Op2 "!")) AssocLeft,
-                Infix   (reservedOp "?'" >> return (Op2 "?'")) AssocLeft,
-                Infix   (reservedOp "??" >> return (Op2 "??")) AssocLeft,
-                Infix   (reservedOp "?" >> return (Op2 "?")) AssocLeft,
+                Prefix  (APMKNI reservedOp "-" >> return (Op1 "-" ni)),
+                Infix   (APMKNI reservedOp "!'" >> return (Op2 "!'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "!!" >> return (Op2 "!!" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "!" >> return (Op2 "!" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "?'" >> return (Op2 "?'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "??" >> return (Op2 "??" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "?" >> return (Op2 "?" ni)) AssocLeft,
                 Infix   
                     (do 
+                        ni <- MKNI
                         v <- infixVar
-                        return (\x y -> (Ap (Ap v x) y)))
+                        return (\x y -> (Ap ni (Ap ni v x) y)))
                     AssocLeft
                 ]
             ,  [
-                Infix   (reservedOp "**"  >> return (Op2 "**")) AssocLeft,
-                Infix   (reservedOp "**."  >> return (Op2 "**.")) AssocLeft,
-                Infix   (reservedOp "^'" >> return (Op2 "^'")) AssocLeft,
-                Infix   (reservedOp "^" >> return (Op2 "^")) AssocLeft
+                Infix   (APMKNI reservedOp "**"  >> return (Op2 "**" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "**."  >> return (Op2 "**." ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "^'" >> return (Op2 "^'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "^" >> return (Op2 "^" ni)) AssocLeft
                 ]
             ,  [
-                Infix   (reservedOp "*'" >> return (Op2 "*'")) AssocLeft,
-                Infix   (reservedOp "*." >> return (Op2 "*.")) AssocLeft,
-                Infix   (reservedOp "*" >> return (Op2 "*")) AssocLeft,
-                Infix   (reservedOp "/'" >> return (Op2 "/'")) AssocLeft,
-                Infix   (reservedOp "/" >> return (Op2 "/")) AssocLeft,
-                Infix   (reservedOp "/." >> return (Op2 "/.")) AssocLeft,
-                Infix   (reservedOp "%" >> return (Op2 "%")) AssocLeft
+                Infix   (APMKNI reservedOp "*'" >> return (Op2 "*'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "*." >> return (Op2 "*." ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "*" >> return (Op2 "*" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "/'" >> return (Op2 "/'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "/" >> return (Op2 "/" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "/." >> return (Op2 "/." ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "%" >> return (Op2 "%" ni)) AssocLeft
                 ]
             ,  [
-                Infix   (reservedOp "+'" >> return (Op2 "+'")) AssocLeft,
-                Infix   (reservedOp "+." >> return (Op2 "+.")) AssocLeft,
-                Infix   (reservedOp "+" >> return (Op2 "+")) AssocLeft,
-                Infix   (reservedOp "-'" >> return (Op2 "-'")) AssocLeft,
-                Infix   (reservedOp "-" >> return (Op2 "-")) AssocLeft,
-                Infix   (reservedOp "-." >> return (Op2 "-.")) AssocLeft
+                Infix   (APMKNI reservedOp "+'" >> return (Op2 "+'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "+." >> return (Op2 "+." ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "+" >> return (Op2 "+" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "-'" >> return (Op2 "-'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "-" >> return (Op2 "-" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "-." >> return (Op2 "-." ni)) AssocLeft
                 ]
             ,  [
-                Infix   (reservedOp ">'" >> return (Op2 ">'")) AssocLeft,
-                Infix   (reservedOp ">" >> return (Op2 ">")) AssocLeft,
-                Infix   (reservedOp "<'" >> return (Op2 "<'")) AssocLeft,
-                Infix   (reservedOp "<" >> return (Op2 "<")) AssocLeft,
-                Infix   (reservedOp ">=" >> return (Op2 ">=")) AssocLeft,
-                Infix   (reservedOp "<=" >> return (Op2 "<=")) AssocLeft,
-                Infix   (reservedOp "='" >> return (Op2 "='")) AssocLeft,
-                Infix   (reservedOp "=" >> return (Op2 "=")) AssocLeft,
-                Infix   (reservedOp "/='"  >> return (Op2 "/='")) AssocLeft,
-                Infix   (reservedOp "/="  >> return (Op2 "/=")) AssocLeft,
-                Infix   (reservedOp "=="  >> return (Op2 "==")) AssocLeft,
-                Infix   (reservedOp "/=="  >> return (Op2 "/==")) AssocLeft
+                Infix   (APMKNI reservedOp ">'" >> return (Op2 ">'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ">" >> return (Op2 ">" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "<'" >> return (Op2 "<'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "<" >> return (Op2 "<" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ">=" >> return (Op2 ">=" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "<=" >> return (Op2 "<=" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "='" >> return (Op2 "='" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "=" >> return (Op2 "=" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "/='"  >> return (Op2 "/='" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "/="  >> return (Op2 "/=" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "=="  >> return (Op2 "==" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "/=="  >> return (Op2 "/==" ni)) AssocLeft
                 ]
             ,  [
-                Infix   (reservedOp "&&" >> return (Op2 "&&")) AssocLeft,
-                Infix   (reservedOp "&'" >> return (Op2 "&'")) AssocLeft,
-                Infix   (reservedOp "&" >> return (Op2 "&")) AssocLeft,
-                Infix   (reservedOp "||"  >> return (Op2 "||")) AssocLeft,
-                Infix   (reservedOp "|'"  >> return (Op2 "|'")) AssocLeft,
-                Infix   (reservedOp "|"  >> return (Op2 "|")) AssocLeft
+                Infix   (APMKNI reservedOp "&&" >> return (Op2 "&&" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "&'" >> return (Op2 "&'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "&" >> return (Op2 "&" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "||"  >> return (Op2 "||" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "|'"  >> return (Op2 "|'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "|"  >> return (Op2 "|" ni)) AssocLeft
                 ]
             ,  [
-                Infix   (reservedOp "+++" >> return (Op2 "+++")) AssocLeft,
-                Infix   (reservedOp "++" >> return (Op2 "++")) AssocLeft,
-                Infix   (reservedOp "//" >> return (Op2 "//")) AssocLeft,
-                Infix   (reservedOp ">>'" >> return (Op2 ">>'")) AssocLeft,
-                Infix   (reservedOp ">>" >> return (Op2 ">>")) AssocLeft,
-                Infix   (reservedOp ">>='" >> return (Op2 ">>='")) AssocLeft,
-                Infix   (reservedOp ">>=" >> return (Op2 ">>=")) AssocLeft,
-                Infix   (reservedOp ":'" >> return (Op2 ":'")) AssocRight,
-                Infix   (reservedOp ":" >> return (Op2 ":")) AssocRight
+                Infix   (APMKNI reservedOp "+++" >> return (Op2 "+++" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "++" >> return (Op2 "++" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "//" >> return (Op2 "//" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ">>'" >> return (Op2 ">>'" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ">>" >> return (Op2 ">>" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ">>='" >> return (Op2 ">>='" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ">>=" >> return (Op2 ">>=" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp ":'" >> return (Op2 ":'" ni)) AssocRight,
+                Infix   (APMKNI reservedOp ":" >> return (Op2 ":" ni)) AssocRight
                 ]
            ,   [
-                Infix   (reservedOp "$$" >> return (Op2 "$$")) AssocLeft,
-                Infix   (reservedOp "$'" >> return (Op2 "$'")) AssocRight,
-                Infix   (reservedOp "$" >> return (Op2 "$")) AssocRight
+                Infix   (APMKNI reservedOp "$$" >> return (Op2 "$$" ni)) AssocLeft,
+                Infix   (APMKNI reservedOp "$'" >> return (Op2 "$'" ni)) AssocRight,
+                Infix   (APMKNI reservedOp "$" >> return (Op2 "$" ni)) AssocRight
                 ]
             ,  [
-                Prefix  (reservedOp "@'" >> return (Op1 "@'")),
-                Prefix  (reservedOp "@" >> return (Op1 "@")),
-                Infix   (reservedOp "::" >> return (Op2 "::")) AssocLeft
+                Prefix  (APMKNI reservedOp "@'" >> return (Op1 "@'" ni)),
+                Prefix  (APMKNI reservedOp "@" >> return (Op1 "@" ni)),
+                Infix   (APMKNI reservedOp "::" >> return (Op2 "::" ni)) AssocLeft
                 ]
             ]
 
 decOperators = 
     [ 
-        [Infix   (reservedOp "::" >> return (Op2 "::")) AssocLeft]
-    ,   [Infix   (reservedOp "," >> return (Op2 ",")) AssocRight]
+        [Infix   (APMKNI reservedOp "::" >> return (Op2 "::" ni)) AssocLeft]
+    ,   [Infix   (APMKNI reservedOp "," >> return (Op2 "," ni)) AssocRight]
     
 
     ]
@@ -374,8 +386,8 @@ decTerm = var
 
 typeOperators = 
     [ 
-        [Infix   (reservedOp "" >> return (Ap)) AssocLeft]
-    ,   [Infix   (reservedOp "->" >> return (Op2 "->")) AssocLeft]
+        [Infix   (APMKNI reservedOp "" >> return (Ap ni)) AssocLeft]
+    ,   [Infix   (APMKNI reservedOp "->" >> return (Op2 "->" ni)) AssocLeft]
     ]
 
 -- the rhs of the `::` operator
@@ -388,10 +400,10 @@ typeTerm =
 
 patOperators = 
     [ 
-      [Infix   (reservedOp "" >> return (PatAp)) AssocLeft]
-    , [Infix   (reservedOp ":'" >> return (PatOp2 ":'")) AssocRight,
-       Infix   (reservedOp ":" >> return (PatOp2 ":")) AssocRight]
-    , [Infix   (reservedOp "$" >> return (PatAp)) AssocRight]
+      [Infix   (APMKNI reservedOp "" >> return (PatAp ni)) AssocLeft]
+    , [Infix   (APMKNI reservedOp ":'" >> return (PatOp2 ":'" ni)) AssocRight,
+       Infix   (APMKNI reservedOp ":" >> return (PatOp2 ":" ni)) AssocRight]
+    , [Infix   (APMKNI reservedOp "$" >> return (PatAp ni)) AssocRight]
     ]
 
 patExpr = try asPattern 
@@ -401,33 +413,36 @@ patTerm =
         try patTupleLiteral
     <|> parens patExpr
     <|> patArrayLiteral
-    <|> liftM PatString stringLiteral
-    <|> liftM PatChar charLiteral
-    <|> try (reserved "True" >> return (PatBool True))
-    <|> try (reserved "False" >> return (PatBool False))
-    <|> try (reserved "Void" >> return (PatVoid))
-    <|> try (liftM PatFloat float)
-    <|> liftM PatVar identifier
-    <|> liftM PatInt integer
+    <|> try (APMKNI stringLiteral >>= \s -> return $ PatString ni s)
+    <|> try (APMKNI charLiteral >>= \c -> return $ PatChar ni c)
+    <|> try (APMKNI reserved "True" >> return (PatBool ni True))
+    <|> try (APMKNI reserved "False" >> return (PatBool ni False))
+    <|> try (APMKNI reserved "Void" >> return (PatVoid ni))
+    <|> try (APMKNI float >>= \f -> return $ PatFloat ni f)
+    <|> try (APMKNI identifier >>= \label -> return $ PatVar ni label)
+    <|> try (APMKNI integer >>= \i -> return $ PatInt ni i)
 
 asPattern = do
+    ni <- MKNI
     label <- identifier
     reservedOp "@"
     px <- patExpr 
-    return $ AsPattern label px
+    return $ AsPattern ni label px
 
 patArrayLiteral = do
+    ni <- MKNI
     reservedOp "["
     xs <- patExpr `sepBy` (reservedOp ",")
     reservedOp "]"
-    return $ PatArray xs
+    return $ PatArray ni xs
 
 patTupleLiteral = parens $ do
+    ni <- MKNI
     -- we must have at least one ","
     x1 <- patExpr
     reservedOp ","
     xs <- patExpr `sepBy1` (reservedOp ",")
-    return $ PatTuple (x1:xs)
+    return $ PatTuple ni (x1:xs)
 
 
 moduleData = do
@@ -511,32 +526,36 @@ statement =
     <|> dataStmt
     <|> try assignStmt
     <|> baseStmt
-    <|> (semi >> (return NOP))
+    <|> (APMKNI semi >> (return $ NOP ni))
 
 blockStmt = do
+    ni <- MKNI
     b <- block
-    return $ Block b
+    return $ Block ni b
 
 decStmt = do
+    ni <- MKNI
     reserved "dec"
     vs <- decExpr
     semi
-    return $ Dec vs
+    return $ Dec ni vs
 
 decAssign = do
+    ni <- MKNI
     reserved "dec"
     s <- do 
         label <- identifier
         reservedOp "<-"
         x <- expr
-        return $ DecAssign label x
+        return $ DecAssign ni label x
     return s
 
 returnStmt = do
+    ni <- MKNI
     reserved "return"
-    x <- option PVoid expr
+    x <- option (PVoid ni) expr
     semi
-    return $ Return x
+    return $ Return ni x
 
 assignStmt = 
         try plainAssignStmt 
@@ -546,72 +565,86 @@ assignStmt =
     <|> mulAssignStmt 
 
 plainAssignStmt = do
+    ni <- MKNI
     left    <- lhsExpr
     reservedOp "<-"
     right   <- expr
     semi
-    return $ Assign left right
+    return $ Assign ni left right
 
 plusAssignStmt = do
+    ni <- MKNI
     left    <- lhsExpr
     reservedOp "+<"
+    xni <- MKNI
     right   <- expr
     semi
-    return $ Assign left (Op2 "+" left right)
+    return $ Assign ni left (Op2 "+" xni left right)
 
 minusAssignStmt = do
+    ni <- MKNI
     left    <- lhsExpr
     reservedOp "-<"
+    xni <- MKNI
     right   <- expr
     semi
-    return $ Assign left (Op2 "-" left right)
+    return $ Assign ni left (Op2 "-" xni left right)
 
 mulAssignStmt = do
+    ni <- MKNI
     left    <- lhsExpr
     reservedOp "*<"
+    xni <- MKNI
     right   <- expr
     semi
-    return $ Assign left (Op2 "*" left right)
+    return $ Assign ni left (Op2 "*" xni left right)
 
 divAssignStmt = do
+    ni <- MKNI
     left    <- lhsExpr
     reservedOp "/<"
+    xni <- MKNI
     right   <- expr
     semi
-    return $ Assign left (Op2 "/" left right)
+    return $ Assign ni left (Op2 "/" xni left right)
 
 fnStmt = do
+    ni <- MKNI
     reserved "fn"
     n <- identifier
     params <- many identifier
     b <- block
-    return $ Fn n params b
+    return $ Fn ni n params b
 
 fnX = do
+    ni <- MKNI
     reserved "fn"
     n <- identifier
     params <- many identifier
     reservedOp "->"
+    xni <- MKNI
     x <- expr
     semi
-    return $ Fn n params (Seq [Return x])
+    return $ Fn ni n params (Seq [Return xni x])
 
 typeStmt = do
+    ni <- MKNI
     reserved "type"
     label <- identifier
     reservedOp ":="
     tx <- typeExpr
     semi
-    return $ TypeAlias label tx
+    return $ TypeAlias ni label tx
 
 dataStmt = do
+    ni <- MKNI
     reserved "data"
     label <- identifier
     ts <- many identifier
     reservedOp ":="
     elems <- dataStmtRHSElem `sepBy1` (reservedOp "|")
     semi
-    return $ DType label ts elems
+    return $ DType ni label ts elems
 
 dataStmtRHSElem = do
     label <- identifier
@@ -634,25 +667,28 @@ dataStmtRHSElem = do
  
 
 whileStmt = do
+    ni <- MKNI
     reserved "While"
     e       <- expr
     b       <- block
-    return $ While e b
+    return $ While ni e b
 
 ifStmt = try ifStmt1 <|> ifStmt2
 
 ifStmt1 = do
+    ni <- MKNI
     reserved "If"
     e       <- expr
     b       <- block
     eb     <- elseStmt
-    return $ If e b eb
+    return $ If ni e b eb
 
 ifStmt2 = do
+    ni <- MKNI
     reserved "If"
     e       <- expr
     b       <- block
-    return $ If e b (Seq [])
+    return $ If ni e b (Seq [])
 
 elseStmt = do
     reserved "Else"
@@ -660,10 +696,11 @@ elseStmt = do
     return $ b
 
 caseStmt = do
+    ni <- MKNI
     reserved "Case"
     x <- expr
     elems <- braces (many1 caseStmtElem)
-    return $ Case x elems
+    return $ Case ni x elems
 
 caseStmtElem :: Parser CaseStmtElem
 caseStmtElem = do
@@ -673,39 +710,45 @@ caseStmtElem = do
     return $ (px,b)
 
 baseStmt = do
+    ni <- MKNI
     e <- expr
     semi
-    return $ Stmt e
+    return $ Stmt ni e
 
 expr = buildExpressionParser operators superTerm
 
 ifExpr = do
+    ni <- MKNI
     reserved "if"
     e1 <- expr
     reserved "then"
     e2 <- expr
     reserved "else"
     e3 <- expr
-    return $ IfX e1 e2 e3
+    return $ IfX ni e1 e2 e3
 
 lamExpr = do
+    ni <- MKNI
     reservedOp "\\"
     as <- many identifier
     b  <- block
-    return $ Lambda as b
+    return $ Lambda ni as b
 
 lamX = do
+    ni <- MKNI
     reservedOp "\\"
     as <- many identifier
     reservedOp "->"
+    xni <- MKNI
     x  <- expr
-    return $ Lambda as (Seq [Return x])
+    return $ Lambda ni as (Seq [Return xni x])
 
 caseExpr = do
+    ni <- MKNI
     reserved "case"
     x <- expr
     elems <- braces (many1 caseExprElem)
-    return $ CaseX x elems
+    return $ CaseX ni x elems
 
 caseExprElem :: Parser CaseExprElem
 caseExprElem = do
@@ -716,17 +759,19 @@ caseExprElem = do
     return $ (px,x)
 
 arrayLiteral = do
+    ni <- MKNI
     reservedOp "["
     xs <- expr `sepBy` (reservedOp ",")
     reservedOp "]"
-    return $ PArray xs
+    return $ PArray ni xs
 
 tupleLiteral = parens $ do
+    ni <- MKNI
     -- we must have at least one ","
     x1 <- expr
     reservedOp ","
     xs <- expr `sepBy1` (reservedOp ",")
-    return $ PTuple (x1:xs)
+    return $ PTuple ni (x1:xs)
 
 superTerm = term
 
@@ -737,17 +782,57 @@ term =
     <|> try lamExpr
     <|> lamX
     <|> caseExpr
-    <|> liftM PString stringLiteral
+    <|> stringP
     <|> arrayLiteral
-    <|> liftM PChar charLiteral
-    <|> try (reserved "True" >> return (PBool True))
-    <|> try (reserved "False" >> return (PBool False))
-    <|> try (reserved "Void" >> return (PVoid))
-    <|> try (liftM PFloat float)
+    <|> charP
+    <|> try boolP
+    <|> try voidP
+    <|> try floatP
     <|> var
-    <|> liftM PInt integer
+    <|> intP
 
-var = liftM Var identifier
+intP = do
+    ni <- MKNI
+    i <- integer
+    return $ PInt ni i
+
+floatP = do
+    ni <- MKNI
+    f <- float
+    return $ PFloat ni f
+
+voidP = do
+    ni <- MKNI
+    reserved "Void"
+    return $ PVoid ni
+
+boolP = trueP <|> falseP
+
+trueP = do
+    ni <- MKNI
+    reserved "True"
+    return $ PBool ni True
+
+falseP = do
+    ni <- MKNI
+    reserved "False"
+    return $ PBool ni False
+
+
+charP = do
+    ni <- MKNI
+    c <- charLiteral
+    return $ PChar ni c
+
+stringP = do
+    ni <- MKNI
+    s <- stringLiteral
+    return $ PString ni s
+
+var = do
+    ni <- MKNI
+    label <- identifier
+    return $ Var ni label
 infixVar = do
     symbol "`"
     v <- var

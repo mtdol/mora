@@ -1,10 +1,12 @@
 module Interp where
 
-import Parse
 import qualified Data.Array as Array
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Char
+
+import Parse
+import Error
 
 data Value = 
       VInt {vgetInt :: Integer} 
@@ -65,8 +67,6 @@ interpToInt x mid m     = interpTo vgetInt x mid m
 interpToBool x mid m    = interpTo vgetBool x mid m
 interpToChar x mid m    = interpTo vgetChar x mid m
 interpToFloat x mid m   = interpTo vgetFloat x mid m
-
-type ModuleId = String
 
 data GlobalKey = GlobalKey Label ModuleId
     deriving (Show, Eq, Ord)
@@ -155,8 +155,8 @@ appendArrays v1@(VPtr _) v2@(VPtr _) m = let
 
 -- maps an id to a given state, trying the local context first, and
 --  later the global context
-mapToState :: Label -> ModuleId -> Value -> State -> State
-mapToState label mid v m@(c,g,h)
+mapToState :: NodeInfo -> Label -> ModuleId -> Value -> State -> State
+mapToState ni label mid v m@(c,g,h)
     | label `Map.member` c = 
         let c' = Map.insert label v c in
             (c', g, h)
@@ -164,7 +164,8 @@ mapToState label mid v m@(c,g,h)
         key = GlobalKey label mid
         in if key `Map.member` g then
             mapToGlobalContext label mid v m
-            else error $ "Could not find var: " ++ label
+            else error $ makeErrMsg ni mid 
+                $ "Could not find var: " ++ label
 
 -- returns the key of a reference if a reference exists, else Nothing
 getGlobalRef :: GlobalKey -> State -> Maybe GlobalKey
@@ -198,19 +199,22 @@ mapToHeap (VPtr ptr) v (c,g,(h,hptr)) =
 
 -- TODO: don't do VVoid, use Maybe
 -- gets a value from the local and global contexts
-getFromState :: Label -> ModuleId -> State -> Value
-getFromState label mid m@(c,g,_)
+getFromState :: NodeInfo -> Label -> ModuleId -> State -> Value
+getFromState ni label mid m@(c,g,_)
     | label `Map.member` c = 
         let v = c Map.! label in case v of
-            VVoid -> error $ "Var not defined: `" ++ label ++ "`."
+            VVoid -> error $ makeErrMsg ni mid
+                $ "Var not defined: `" ++ label ++ "`."
             v     -> v
     | otherwise = let
         key = GlobalKey label mid
         in if key `Map.member` g then 
             case getFromGlobalContext (GlobalKey label mid) m of
-                VVoid -> error $ "Var not defined: `" ++ label ++ "`."
+                VVoid -> error $ makeErrMsg ni mid
+                    $ "Var not defined: `" ++ label ++ "`."
                 v     -> v
-            else error $ "Var not declared: `" ++ label ++ "`."
+            else error $ makeErrMsg ni mid
+                $ "Var not declared: `" ++ label ++ "`."
 
 getFromLocalContext :: Label -> State -> Value
 getFromLocalContext label (c,_,_) = c Map.! label
@@ -261,7 +265,7 @@ interp ss mid m args =
         -- now exec global variables
         (os, m''') = interpGlobals ss mid m''
         -- find the main function
-        vfn = getFromState "main" mid m'''
+        vfn = getFromState (NodeInfo 0 0) "main" mid m'''
         -- convert args into an in-language array
         (vptrs, m'''') = getArrays args m'''
         (args',m_)     = allocateArray vptrs m''''
@@ -274,7 +278,8 @@ interp ss mid m args =
         (VFn _ _ fps@["args"] [] (Right fb)) -> 
             let (ret,os',m_') = runMain vfn (Just args') mid m_
             in (ret,os++os',m_')
-        _ -> error "Could not find appropriate main function definition."
+        _ -> error $ makeErrMsgMid mid 
+            $ "Could not find appropriate main function definition."
     where
     getArrays ss m = foldr (\s (vptrs,m) -> 
                      let (vptr,m') = allocateArray (map VChar s) m in (vptr:vptrs,m'))
@@ -340,11 +345,11 @@ mapPreloaded mid m = let
 interpDefs :: Program -> ModuleId -> State -> State
 interpDefs (Seq []) mid m     = m
 interpDefs (Seq (s:ss)) mid m = case s of
-    Fn fl fps fb -> 
+    Fn ni fl fps fb -> 
         let vf = VFn (Just fl) mid fps [] (Right fb)
             m' = mapToGlobalContext fl mid vf m
         in interpDefs (Seq ss) mid m'
-    DType _ _ elems -> let 
+    DType ni _ _ elems -> let 
         m' = interpDTElems elems mid m
         in interpDefs (Seq ss) mid m'
     _ -> interpDefs (Seq ss) mid m 
@@ -405,18 +410,18 @@ makeSettersGetters mbs label mid m = aux mbs label mid 0 m
 --                                               io stream    memory
 interpGlobals :: Program -> ModuleId -> State -> ([IO Value], State)
 interpGlobals (Seq []) mid m = ([], m)
-interpGlobals (Seq ((DecAssign label x2):ss)) mid m = let
+interpGlobals (Seq ((DecAssign ni label x2):ss)) mid m = let
     (v2,os,m') = interpX x2 mid m
     m'' = mapToGlobalContext label mid v2 m'
     (os',m''') = interpGlobals (Seq ss) mid m''
     in (os++os',m''')
 interpGlobals (Seq (s:ss)) mid m = case s of
     -- ignore
-    Fn _ _ _ -> interpGlobals (Seq ss) mid m
+    Fn _ _ _ _ -> interpGlobals (Seq ss) mid m
     -- ignore
-    DType _ _ _ -> interpGlobals (Seq ss) mid m
+    DType _ _ _ _ -> interpGlobals (Seq ss) mid m
     -- ignore
-    TypeAlias _ _ -> interpGlobals (Seq ss) mid m
+    TypeAlias _ _ _ -> interpGlobals (Seq ss) mid m
     _ -> let (_,os,m') = interpS s mid m
              (os',m'') = interpGlobals (Seq ss) mid m'
          in (os++os',m'')
@@ -424,7 +429,7 @@ interpGlobals (Seq (s:ss)) mid m = case s of
 --                                       return value    io stream      memory
 interpSeq :: Seq -> ModuleId -> State -> (Maybe Value,   [IO Value],    State)
 interpSeq (Seq []) mid m = (Nothing,[],m)
-interpSeq (Seq ((Return x):ss)) mid m = 
+interpSeq (Seq ((Return ni x):ss)) mid m = 
     let (v,os,m') = interpX x mid m
     in (Just v, os, m')
 interpSeq (Seq (s:ss)) mid m = 
@@ -437,29 +442,29 @@ interpSeq (Seq (s:ss)) mid m =
         r@(Just v, _, _) -> r
 
 interpS :: Stmt -> ModuleId -> State -> (Maybe Value, [IO Value], State)
-interpS (Stmt x) mid m = 
+interpS (Stmt ni x) mid m = 
     let (_,os,m') = interpX x mid m in
         (Nothing,os,m')
-interpS (Block ss) mid m = interpSeq ss mid m
-interpS (NOP) mid m    = (Nothing,[],m)
-interpS (DecAssign label x2) mid m = let
+interpS (Block ni ss) mid m = interpSeq ss mid m
+interpS (NOP _) mid m    = (Nothing,[],m)
+interpS (DecAssign ni label x2) mid m = let
     (v2,os,m') = interpX x2 mid m
     m'' = mapToLocalContext label v2 m'
     in (Nothing,os,m'')
 -- TODO: change VVoid
 -- maps each var into the context with a meaningless `VVoid` value
-interpS (Dec (Var label)) mid m = let
+interpS (Dec ni (Var vni label)) mid m = let
     m' = mapToLocalContext label VVoid m
     in (Nothing,[],m')
-interpS (Assign (Var label) x) mid m =
+interpS (Assign ni (Var vni label) x) mid m =
     let (v,os,m') = interpX x mid m
-        m'' = mapToState label mid v m'
+        m'' = mapToState ni label mid v m'
         in (Nothing,os, m'')
 
 -- array indexing
 --
---                       ptr  index  rhs
-interpS (Assign (Op2 "!" lx1  lx2)   rx) mid m =
+--                               ptr  index  rhs
+interpS (Assign ni1 (Op2 "!" ni2 lx1  lx2)   rx) mid m =
     let (v,os,m')     = interpX rx mid m
         (i,os',m'')   = interpToInt lx2 mid m'
         (vptr@(VPtr _),os'',m''') = interpX lx1 mid m''
@@ -474,10 +479,10 @@ interpS (Assign (Op2 "!" lx1  lx2)   rx) mid m =
             _ -> error "Tried to `!` assign to non-array"
        
 -- local function definition
-interpS (Fn fl fps fb) mid m = 
-    let m' = mapToLocalContext fl (VFn (Just fl) mid fps [] (Right fb)) m
-    in (Nothing,[],m')
-interpS (If x ss1 ss2) mid m = 
+interpS (Fn ni fl fps fb) mid m = 
+    error $ makeErrMsg ni mid 
+        $ "Local function definitions not allowed."
+interpS (If ni x ss1 ss2) mid m = 
     let (b,os,m'@(c',_,_)) = interpToBool x mid m
     in
         if b then 
@@ -486,7 +491,7 @@ interpS (If x ss1 ss2) mid m =
         else 
             let (v,os',(c'',g'',h'')) = interpSeq ss2 mid m'
             in (v,os++os',(c'',g'',h''))
-interpS (While x ss) mid m = 
+interpS (While ni x ss) mid m = 
     let (b,os,m'@(c',_,_)) = interpToBool x mid m 
     in
         if not b then
@@ -498,11 +503,11 @@ interpS (While x ss) mid m =
                 (Just v,os',(c'',g'',h'')) -> (Just v,os++os',(c'',g'',h''))
                 -- no return value, keep going
                 (Nothing,os',(c'',g'',h'')) ->
-                    let (v,os'',m''') = interpS (While x ss) mid (c'',g'',h'') in
+                    let (v,os'',m''') = interpS (While ni x ss) mid (c'',g'',h'') in
                     (v,os++os'++os'',m''')
 
 -- case statement
-interpS (Case x elems) mid m =
+interpS (Case ni x elems) mid m =
     let (v,os,m') = interpX x mid m
         (v',os',m'') = interpCaseStmtElems elems v mid m'
     in (v',os++os',m'')
@@ -598,82 +603,82 @@ interpRunFn fb fps fas mid m@(c,g,h) =
 --
 --                                      value   io stream    memory
 interpX :: Expr -> ModuleId -> State -> (Value, [IO Value],  State)
-interpX (PBool b) mid m     = (VBool $ b,[],m)
-interpX (PInt i) mid m      = (VInt $ i,[],m)
-interpX (PChar c) mid m     = (VChar $ c,[],m)
-interpX (PFloat f) mid m    = (VFloat $ f,[],m)
-interpX (PVoid) mid m       = (VVoid,[],m)
+interpX (PBool _ b) mid m     = (VBool $ b,[],m)
+interpX (PInt _ i) mid m      = (VInt $ i,[],m)
+interpX (PChar _ c) mid m     = (VChar $ c,[],m)
+interpX (PFloat _ f) mid m    = (VFloat $ f,[],m)
+interpX (PVoid _) mid m       = (VVoid,[],m)
 -- disregard type annotations
-interpX (Op2 "::" x _) mid m = interpX x mid m
-interpX (Var label) mid m    = (getFromState label mid m,[],m)
+interpX (Op2 "::" ni x _) mid m = interpX x mid m
+interpX (Var ni label) mid m    = (getFromState ni label mid m,[],m)
 
-interpX (PArray xs) mid m = let
+interpX (PArray _ xs) mid m = let
     (vs,os,m') = interpXs xs mid m
     (vptr,m'') = allocateArray vs m'
     in (vptr,os,m'')
 
-interpX (PString s) mid m = let
+interpX (PString _ s) mid m = let
     rs = map VChar s
     (vptr,m') = allocateArray rs m
     in (vptr,[],m')
 
-interpX (PTuple xs) mid m = let
+interpX (PTuple _ xs) mid m = let
     (vs,os,m') = interpXs xs mid m 
     v = VTuple vs
     (vptr,m'') = allocateValue v m'
     in (vptr,os,m'')
 
-interpX (Lambda lps lb) mid m = (VFn Nothing mid lps [] (Right lb),[],m)
+interpX (Lambda ni lps lb) mid m = (VFn Nothing mid lps [] (Right lb),[],m)
 
-interpX (Op2 "+" x1 x2) mid m =
+interpX (Op2 "+" ni x1 x2) mid m =
     interpOp2 interpToInt interpToInt (+) VInt x1 x2 mid m
-interpX (Op2 "+." x1 x2) mid m =
+interpX (Op2 "+." ni x1 x2) mid m =
     interpOp2 interpToFloat interpToFloat (+) VFloat x1 x2 mid m
-interpX (Op2 "-" x1 x2) mid m =
+interpX (Op2 "-" ni x1 x2) mid m =
     interpOp2 interpToInt interpToInt (-) VInt x1 x2 mid m
-interpX (Op2 "-." x1 x2) mid m =
+interpX (Op2 "-." ni x1 x2) mid m =
     interpOp2 interpToFloat interpToFloat (-) VFloat x1 x2 mid m
-interpX (Op2 "*" x1 x2) mid m =
+interpX (Op2 "*" ni x1 x2) mid m =
     interpOp2 interpToInt interpToInt (*) VInt x1 x2 mid m
-interpX (Op2 "*." x1 x2) mid m =
+interpX (Op2 "*." ni x1 x2) mid m =
     interpOp2 interpToFloat interpToFloat (*) VFloat x1 x2 mid m
-interpX (Op2 "/" x1 x2) mid m =
+interpX (Op2 "/" ni x1 x2) mid m =
     let (v1,os,m')    = interpToInt x1 mid m
         (v2,os',m'')  = interpToInt x2 mid m'
     in (VInt $ floor $ (fromIntegral v1) / (fromIntegral v2),os++os',m'')
-interpX (Op2 "/." x1 x2) mid m =
+interpX (Op2 "/." ni x1 x2) mid m =
     interpOp2 interpToFloat interpToFloat (/) VFloat x1 x2 mid m
-interpX (Op2 "**" x1 x2) mid m =
+interpX (Op2 "**" ni x1 x2) mid m =
     interpOp2 interpToInt interpToInt (^) VInt x1 x2 mid m
-interpX (Op2 "**." x1 x2) mid m =
+interpX (Op2 "**." ni x1 x2) mid m =
     interpOp2 interpToFloat interpToFloat (**) VFloat x1 x2 mid m
 
-interpX (Op2 "%" x1 x2) mid m =
+interpX (Op2 "%" ni x1 x2) mid m =
     interpOp2 interpToInt interpToInt (mod) VInt x1 x2 mid m
 
-interpX (Op2 "=" x1 x2) mid m =
+interpX (Op2 "=" ni x1 x2) mid m =
     interpOp2Generic (==) VBool x1 x2 mid m
-interpX (Op2 "/=" x1 x2) mid m =
+interpX (Op2 "/=" ni x1 x2) mid m =
     interpOp2Generic (/=) VBool x1 x2 mid m
 
-interpX (Op2 ">" x1 x2) mid m =
+interpX (Op2 ">" ni x1 x2) mid m =
     interpOp2Generic (>) VBool x1 x2 mid m
-interpX (Op2 "<" x1 x2) mid m =
+interpX (Op2 "<" ni x1 x2) mid m =
     interpOp2Generic (<) VBool x1 x2 mid m
-interpX (Op2 ">=" x1 x2) mid m =
+interpX (Op2 ">=" ni x1 x2) mid m =
     interpOp2Generic (>=) VBool x1 x2 mid m
-interpX (Op2 "<=" x1 x2) mid m =
+interpX (Op2 "<=" ni x1 x2) mid m =
     interpOp2Generic (<=) VBool x1 x2 mid m
 
-interpX (Op2 "&&" x1 x2) mid m =
+interpX (Op2 "&&" ni x1 x2) mid m =
     interpOp2 interpToBool interpToBool (&&) VBool x1 x2 mid m
-interpX (Op2 "||" x1 x2) mid m =
+interpX (Op2 "||" ni x1 x2) mid m =
     interpOp2 interpToBool interpToBool (||) VBool x1 x2 mid m
 
-interpX (Op1 "-" x) mid m =
+interpX (Op1 "-" ni x) mid m =
     interpOp1 interpToInt (\x -> 0 - x) VInt x mid m
 
-interpX (Op2 "!" x1 x2) mid m =
+interpX (Op2 "!" ni x1 x2) mid m =
     case interpX x1 mid m of
         (vptr@(VPtr _),os,m') ->
             case getFromHeap vptr m' of
@@ -683,7 +688,7 @@ interpX (Op2 "!" x1 x2) mid m =
                 _ -> error "Tried to array-deref a non-array."
         _ -> error "Tried to array-deref a non-array."
 
-interpX (IfX x1 x2 x3) mid m =
+interpX (IfX ni x1 x2 x3) mid m =
     let (b1,os,m') = interpToBool x1 mid m in
     if b1 then 
         let (v,os',m'') = interpX x2 mid m'
@@ -692,7 +697,7 @@ interpX (IfX x1 x2 x3) mid m =
         let (v,os',m'') = interpX x3 mid m'
         in (v,os++os',m'')
 
-interpX (Ap x1 x2) mid m = let 
+interpX (Ap ni x1 x2) mid m = let 
     (v2,os,m') = interpX x2 mid m
     in case interpX x1 mid m' of
     ((VGetter label i _),os',m'') -> let
@@ -730,7 +735,7 @@ interpX (Ap x1 x2) mid m = let
                 -- currying
                 else (VFn fl fmid fps (v2:fas) fb,os++os',m'')
 
-interpX (ApNull x) mid m =
+interpX (ApNull ni x) mid m =
     let ((VFn fl fmid [] [] fb),os,m') = interpX x mid m
     in case fb of
         Right fb -> let
@@ -741,20 +746,16 @@ interpX (ApNull x) mid m =
             (v,os',m'') = interpPreloadedFn op [] fmid m'
             in (v,os++os',m'')
 
-interpX (Op2 "$" x1 x2) mid m = interpX (Ap x1 x2) mid m
+interpX (Op2 "$" ni x1 x2) mid m = interpX (Ap ni x1 x2) mid m
 
-interpX (CaseX x elems) mid m =
+interpX (CaseX ni x elems) mid m =
     let (v,os,m') = interpX x mid m
         (v',os',m'') = interpCaseExprElems elems v mid m'
     in (v',os++os',m'')
 
 
--- user defined ops
-interpX (Op2 op x1 x2) mid m = interpX (Ap (Ap (Var op) x1) x2) mid m
-interpX (Op1 op x) mid m = interpX (Ap (Var op) x) mid m
-
--- interpX x m = 
---     error $ "Interp: Could not match expr:\n" ++ show x
+interpX x mid m = 
+    error $ "Interp: Could not match expr:\n" ++ show x
 
 
 interpCaseExprElems :: [CaseExprElem] -> Value -> ModuleId -> State 
@@ -864,52 +865,46 @@ showValue v m = aux v m where
 -- interprets a a pattern against a value
 interpP :: PatExpr -> Value -> ModuleId -> State -> Maybe State
 interpP px v mid m = case px of
-    PatInt i -> case v of
+    PatInt _ i -> case v of
         VInt i' -> if i==i' then Just m else Nothing
         _ -> Nothing
-    PatFloat f -> case v of
+    PatFloat _ f -> case v of
         VFloat f' -> if f==f' then Just m else Nothing
         _ -> Nothing
-    PatChar c -> case v of
+    PatChar _ c -> case v of
         VChar c' -> if c==c' then Just m else Nothing
         _ -> Nothing
-    PatBool b -> case v of
+    PatBool _ b -> case v of
         VBool b' -> if b==b' then Just m else Nothing
         _ -> Nothing
-    PatVoid -> case v of
+    PatVoid _ -> case v of
         VVoid -> Just m
         _ -> Nothing
-    pap@(PatAp _ _) -> let
+    pap@(PatAp _ _ _) -> let
         (label,pxs) = patApToList pap
         in case ptrToObj v m of
             Just (VObj label' mbs) ->
                 if label /= label' then Nothing else
                     interpPs (reverse pxs) mbs mid m
             _ -> Nothing
-    PatOp2 op px1 px2 -> case getFromState op mid m of
-        -- lookup op in state
-        (VCons label _ []) -> case ptrToObj v m of
-            Just (VObj label' mbs) ->
-                interpPs [px1,px2] mbs mid m
-            _ -> Nothing
-    PatTuple pxs -> case ptrToTuple v m of
+    PatTuple ni pxs -> case ptrToTuple v m of
         Just (VTuple vs) -> interpPs pxs vs mid m
         _ -> Nothing
-    PatArray pxs -> case ptrToArrayValues v m of
+    PatArray ni pxs -> case ptrToArrayValues v m of
         Just vs -> interpPs pxs vs mid m
         _ -> Nothing
-    PatString s -> case ptrToArrayValues v m of
-        Just vs -> interpPs (map PatChar s) vs mid m
+    PatString ni s -> case ptrToArrayValues v m of
+        Just vs -> interpPs (map (PatChar ni) s) vs mid m
         _ -> Nothing
-    PatVar "_" -> Just m
-    PatVar label -> if isConsVar label then
+    PatVar ni "_" -> Just m
+    PatVar ni label -> if isConsVar label then
         case ptrToObj v m of
             Just (VObj label' _) ->
                 if label /= label' then Nothing else
                     Just m
             _ -> Nothing
         else Just $ mapToLocalContext label v m
-    AsPattern label x -> case interpP x v mid m of
+    AsPattern ni label x -> case interpP x v mid m of
         Just m' -> Just $ mapToLocalContext label v m'
         Nothing -> Nothing 
  where
@@ -941,8 +936,8 @@ interpPs (px:pxs) (v:vs) mid m = case interpP px v mid m of
 -- converts (PatAp (PatAp (Var "Cons") (PatInt 3)) (Var "Null")) ->
 --  ("Cons", [(PatInt 3), (Var "Null")])
 patApToList :: PatExpr -> (Label, [PatExpr])
-patApToList (PatAp (PatVar label) px) = (label, [px])
-patApToList (PatAp px1 px2) = let 
+patApToList (PatAp ni (PatVar vni label) px) = (label, [px])
+patApToList (PatAp ni px1 px2) = let 
     (label, pxs) = patApToList px1
     in (label, px2:pxs)
 patApToList _ = error "pattern: Improper constructor application."

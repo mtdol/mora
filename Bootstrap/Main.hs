@@ -91,9 +91,9 @@ run im text m mid prjloc args = do
         let imps' = if mid == "Prelude" || not includePrelude
             then imps 
             else preludeImport : imps
-        let p' = expand p ops'
+        let p' = expand p ops' mid
         -- well formed check
-        let p'' = case wellFormed p' of {
+        let p'' = case wellFormed p' mid of {
             Right True -> p';
             Left errMsg -> error errMsg;
             }
