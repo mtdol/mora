@@ -509,19 +509,19 @@ interpS (While ni x ss) mid m =
 -- case statement
 interpS (Case ni x elems) mid m =
     let (v,os,m') = interpX x mid m
-        (v',os',m'') = interpCaseStmtElems elems v mid m'
+        (v',os',m'') = interpCaseStmtElems elems v mid m' ni
     in (v',os++os',m'')
 
 interpS s mid m = 
     error $ "Interp: Could not match stmt:\n" ++ show s 
 
-interpCaseStmtElems :: [CaseStmtElem] -> Value -> ModuleId -> State 
+interpCaseStmtElems :: [CaseStmtElem] -> Value -> ModuleId -> State -> NodeInfo 
     -> (Maybe Value,[IO Value],State)
-interpCaseStmtElems [] v _ _ = 
-    error $ "Pattern matching failed for:\n" 
-        ++ show v
-interpCaseStmtElems ((px,ss):elems) v mid m = case interpP px v mid m of
-    Nothing -> interpCaseStmtElems elems v mid m
+interpCaseStmtElems [] v mid m ni = 
+    error $ makeErrMsg ni mid 
+        $ "Pattern matching failed."
+interpCaseStmtElems ((px,ss):elems) v mid m ni = case interpP px v mid m of
+    Nothing -> interpCaseStmtElems elems v mid m ni
     Just m' -> interpSeq ss mid m'
 
 interpOp2 :: 
@@ -750,7 +750,7 @@ interpX (Op2 "$" ni x1 x2) mid m = interpX (Ap ni x1 x2) mid m
 
 interpX (CaseX ni x elems) mid m =
     let (v,os,m') = interpX x mid m
-        (v',os',m'') = interpCaseExprElems elems v mid m'
+        (v',os',m'') = interpCaseExprElems elems v mid m' ni
     in (v',os++os',m'')
 
 
@@ -758,13 +758,13 @@ interpX x mid m =
     error $ "Interp: Could not match expr:\n" ++ show x
 
 
-interpCaseExprElems :: [CaseExprElem] -> Value -> ModuleId -> State 
+interpCaseExprElems :: [CaseExprElem] -> Value -> ModuleId -> State -> NodeInfo
     -> (Value,[IO Value],State)
-interpCaseExprElems [] v _ _ =
-    error $ "Pattern matching failed for:\n" 
-        ++ show v
-interpCaseExprElems ((px,x):elems) v mid m = case interpP px v mid m of
-    Nothing -> interpCaseExprElems elems v mid m
+interpCaseExprElems [] v mid m ni =
+    error $ makeErrMsg ni mid 
+        $ "Pattern matching failed."
+interpCaseExprElems ((px,x):elems) v mid m ni = case interpP px v mid m of
+    Nothing -> interpCaseExprElems elems v mid m ni
     Just m' -> interpX x mid m'
 
 

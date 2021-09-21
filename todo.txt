@@ -1,34 +1,3 @@
-- should I allow variable shadowing?
-```
-dec a;
-a <- 3;
-{dec a <- 2;}
--- prints 3
-@a;
-```
+- allow identifiers to end in tick (ex: a')
 
-- variable declaration scope
-```
-{dec a <- 3; @a; {-okay-}}
--- illegal
-@a;
-```
-perhaps use static var renaming for this
-
-
-- allow sub-procedures
-```
-fn f x {
-    fn g y {
-        ...
-    }
-    ...
-}
-```
-perhaps lift the sub-procs to the global space (to allow recursion)
-    and then do static variable renaming
-
-- improve error messages for pattern matching
-
-
-- allow file manipulation, probably with file handles
+- ffi to allow system access

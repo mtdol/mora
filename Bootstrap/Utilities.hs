@@ -30,3 +30,16 @@ getDuplicates xs = aux xs Set.empty
     aux [] _ = []
     aux (x:xs) m | x `Set.member` m = x : aux xs m
     aux (x:xs) m = aux xs (x `Set.insert` m)
+
+
+-- gathers all functions at the top-level of the given `Seq` and returns then.
+--
+-- Also removes the functions from the top-level.
+gatherFns :: Seq -> ([Stmt],Seq)
+gatherFns (Seq []) = ([],Seq [])
+gatherFns (Seq (s@(Fn _ _ _ _):ss)) = let
+    (fns,ss') = gatherFns (Seq ss)
+    in (s:fns,ss')
+gatherFns (Seq (s:ss)) = let
+    (fns,(Seq ss')) = gatherFns (Seq ss)
+    in (fns,Seq (s:ss'))

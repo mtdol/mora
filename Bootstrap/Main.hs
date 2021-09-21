@@ -97,7 +97,7 @@ run im text m mid prjloc args = do
             Right True -> p';
             Left errMsg -> error errMsg;
             }
-        let p''' = desugar p''
+        let p''' = desugar p'' mid
         (os,aimps',m') <- runImports mid prjloc imps' m ipc aimps
         if im then
             let (os',m'') = interpInteractive p''' mid m'

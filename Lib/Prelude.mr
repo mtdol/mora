@@ -333,7 +333,6 @@ fn lelem xs e -> case xs {
     x:xs -> if x = e then True else lelem xs e;
 };
 
--- TODO: test this
 --lreverse :: List a -> List a;
 fn lreverse xs {
     fn aux xs acc ->

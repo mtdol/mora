@@ -1,0 +1,29 @@
+fn main {
+    dec i <- 7;
+    While i >= 0 {putLn $ f i; i -< 1;}
+    return 0;
+}
+
+fn f n {
+    -- this is just here to make sure functions are being
+    --  gathered properly
+    dec a <- n;
+    fn f1 n {
+        return f11 n;
+
+        -- double nesting (just for testing purposes)
+        fn f11 n -> 
+            if n = 0 then "odd" else f2 $ n-1
+        ;
+
+    }
+    
+    -- print out `n` cuz why not
+    @a;
+    
+    fn f2 n ->
+        if n = 0 then "even" else f1 $ n-1
+    ;
+
+    return f2 n;
+}
