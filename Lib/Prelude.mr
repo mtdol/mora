@@ -1,6 +1,7 @@
 module excluding () {
     op ++   append;
     op :    Cons;
+    op .    compose;
 }
 
 data Maybe a := 
@@ -19,6 +20,8 @@ type String := Array Char;
 
 -- id :: a -> a;
 fn id a -> a;
+fn const _ y -> y;
+fn flip f x y -> f y x;
 
 --not :: Bool -> Bool;
 fn not b -> if b then False else True;
@@ -31,12 +34,20 @@ fn xor b1 b2 -> b1 /= b2;
 --
 
 fn odd n -> n % 2 = 1;
-fn even n -> n % 2 = 0;
+dec even <- not . odd
 fn add1 n -> n+1;
 fn sub1 n -> n-1;
+fn neg n -> -n;
+fn abs n -> if n > 0 then n else -n;
 
 fn max n1 n2 -> if n1 >= n2 then n1 else n2;
 fn min n1 n2 -> if n1 <= n2 then n1 else n2;
+
+fn eq v1 v2 -> v1 = v2;
+dec neq <- not `compose2` eq;
+
+fn compose f1 f2 x -> f1 $ f2 x;
+fn compose2 f1 f2 x y -> f1 $ f2 x y;
 
 --inRange :: (Int,Int) -> Int;
 fn inRange r x -> x >= fst r && x < snd r;
@@ -47,7 +58,7 @@ fn map f a {
     dec i;
     i <- 0;
 
-    While (i /= length a) {
+    While i /= length a {
         a ! i <- f (a ! i);
         i +< 1;
     }
@@ -69,7 +80,7 @@ fn gmap f a {
     return ret;
 }
 
--- applies a function to an array without modifying it.
+-- applies a function to an array without explicitly modifying it.
 -- "void" map
 --vmap :: (a -> b) -> Array a -> Void;
 fn vmap f a {
@@ -127,8 +138,7 @@ fn filter f a {
     return ret2;
 }
 
-
-fn elem a e {
+fn elem e a {
     dec i <- 0;
 
     While i /= length a {
@@ -138,6 +148,8 @@ fn elem a e {
 
     return False;
 }
+
+-- TODO: `lookup`
 
 --slice :: Array a -> (Int, Int) -> Array a
 fn slice a is {
@@ -174,6 +186,62 @@ fn zip xs ys {
 
     return ret;
 }
+
+fn foldr f acc xs {
+    dec i <- length xs - 1;
+    While i /= -1 {
+        acc <- f (xs ! i) acc;
+        i -< 1;
+    }
+
+    return acc;
+}
+
+fn foldl f acc xs {
+    dec i <- 0;
+    While i /= length xs {
+        acc <- f (xs ! i) acc;
+        i +< 1;
+    }
+
+    return acc;
+}
+
+fn take n xs {
+    n <- min (max n 0) (length xs);
+    return slice xs (0,n);
+}
+
+fn drop n xs {
+    n <- max 0 $ min n $ length xs;
+    return slice xs (n,length xs);
+}
+
+-- and :: Array Bool -> Bool
+fn and xs {
+    dec i <- 0;
+    While i /= length xs {
+        If not $ xs ! i {return False;}
+        i +< 1;
+    }
+    return True;
+}
+
+fn or xs {
+    dec i <- 0;
+    While i /= length xs {
+        If xs ! i {return True;}
+        i +< 1;
+    }
+    return False;
+}
+
+-- all :: (a -> Bool) -> Array a -> Bool
+fn all f xs -> and $ gmap f xs;
+fn any f xs -> or $ gmap f xs;
+
+dec sum <- foldl (\x y -> x+y) 0;
+dec product <- foldl (\x y -> x*y) 1;
 
 --
 --- Strings
@@ -237,17 +305,13 @@ fn readInt s {
 --- Structures, Tuples
 --
 
-fn fst tp ->
-    case tp {
-        (x,_) -> x;
-    }
-;
+fn fst tp -> case tp {
+    (x,_) -> x;
+};
 
-fn snd tp ->
-    case tp {
-        (_,y) -> y;
-    }
-;
+fn snd tp -> case tp {
+    (_,y) -> y;
+};
 
 -- uncurry :: (a -> b -> c) -> (a, b) -> c;
 fn uncurry f xy ->
@@ -289,27 +353,32 @@ fn tail v ->
         lgetNext v
 ;
 
-fn maybeHead v ->
-    case v {
-        Null -> No;
-        x:_ -> Yes x;
-    }
-;
+fn last xs -> case xs {
+    Null -> error "`last`: Cannot deref Null.";
+    x:Null -> x;
+    _:xs -> last xs;
+};
 
-fn maybeTail v ->
-    case v {
-        Null -> No;
-        _:xs -> Yes xs;
-    }
-;
+fn maybeHead xs -> case xs {
+    Null -> No;
+    x:_ -> Yes x;
+};
 
-fn lindex xs i ->
-    case xs {
-        Null -> error "lindex: Index out of bounds.";
-        x:xs -> 
-            if i = 0 then x else lindex xs (i-1);
-    }
-;
+fn maybeTail xs -> case xs {
+    Null -> No;
+    _:xs -> Yes xs;
+};
+
+fn maybeLast xs -> case xs {
+    Null -> No;
+    x:Null -> Yes x;
+    _:xs -> maybeLast xs;
+};
+
+fn lindex xs i -> case xs {
+    Null -> error "lindex: Index out of bounds.";
+    x:xs -> if i = 0 then x else lindex xs (i-1);
+};
 
 --lappend :: List a -> List a -> List a;
 fn lappend xs ys ->
@@ -328,9 +397,9 @@ fn lfilter f xs -> case xs {
         Null -> Null;
 };
 
-fn lelem xs e -> case xs {
+fn lelem e xs -> case xs {
     Null -> False;
-    x:xs -> if x = e then True else lelem xs e;
+    x:xs -> if x = e then True else lelem e xs;
 };
 
 --lreverse :: List a -> List a;
@@ -375,6 +444,24 @@ fn lvmap f xs {
     }
 }
 
+fn lfoldl f acc xs -> case xs {
+    Null -> acc;
+    x:xs -> lfoldl f (f x acc) xs;
+};
+
+{-
+-- might not be the most optimal
+fn lfoldr f acc xs -> case xs {
+    Null -> acc;
+    x:xs -> f x (lfoldr f acc xs);
+};
+-}
+
+fn lfoldr f acc xs {
+    xs <- lreverse xs;
+    return lfoldl f acc xs;
+}
+
 fn lzip xs ys ->
     case (xs,ys) {
         (Null,_) -> Null;
@@ -383,12 +470,23 @@ fn lzip xs ys ->
     }
 ;
 
-fn llength xs ->
-    case xs {
-        Null -> 0;
-        _:xs -> 1 + llength xs;
-    }
-;
+fn land xs -> case xs {
+    Null -> True;
+    x:xs -> x && land xs;
+};
+
+fn lor xs -> case xs {
+    Null -> False;
+    x:xs -> x || land xs;
+};
+
+fn lall f xs -> land $ lgmap f xs;
+fn lany f xs -> lor $ lgmap f xs;
+
+dec lsum <- lfoldl (\x y -> x+y) 0;
+dec lproduct <- lfoldl (\x y -> x*y) 1;
+
+dec llength <- lfoldl (\_ acc -> acc+1) 0;
 
 fn arrayToList a {
     dec i <- length a - 1;
@@ -416,11 +514,11 @@ fn listToArray xs {
 }
 
 -- list pretty print
-fn lprint xs {
+fn lpprint xs {
     Case xs {
-        x:xs -> {print x; put " : "; lprint xs;}
+        x:xs -> {print x; put " : "; lpprint xs;}
         Null -> {put "Null";}
     }
 }
 
-fn lprintLn xs {lprint xs; putLn "";}
+fn lpprintLn xs {lpprint xs; putLn "";}

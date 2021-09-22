@@ -33,6 +33,7 @@ preludeOps = [
     , OpDec "++"    "append"
     , OpDec "@"     "printLn" 
     , OpDec "!!"    "lindex"
+    , OpDec "."     "compose"
     ]
 includePrelude = True
 
