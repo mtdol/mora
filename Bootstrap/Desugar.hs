@@ -6,14 +6,80 @@ import Utilities (gatherFns)
 
 desugar :: Program -> ModuleId -> Program
 desugar p mid = let
-    p'  = simpleDecs p 
-    p'' = liftFns p' mid
-    in p''
+    p'   = simpleDecs p 
+    p''  = scope p' mid
+    p''' = liftFns p'' mid
+    in p'''
+
+-- relabels local variables such that scoped and shadowed variables have
+--  unique names
+--
+--  ex: `{dec a; a; {dec a; a} a;}` -> {dec a'; a'; {dec a''; a''} a';}
+scope :: Program -> ModuleId -> Program
+scope p mid = let
+    ((Seq ss'), _) = aux 0 True p mid
+    in Seq ss'
+ where
+    --     unique id  top level?  prog   
+    aux :: Int ->     Bool ->     Seq  -> ModuleId
+    --     relabeled prog   curr id
+        -> (Seq,            Int)
+    aux i tl (Seq []) mid = (Seq [], i)
+    -- relabel everything after this to the new label
+    aux i False (Seq ((Dec ni (Var vni ol)):ss)) mid = let
+        nl = getNewLabel ol i
+        s = Dec ni (Var vni nl)
+        ss' = relabel False (Seq ss) ol nl
+        ((Seq ss''),i') = aux (i+1) False ss' mid
+        in (Seq (s:ss''),i')
+    -- also for DecAssign
+    aux i False (Seq ((DecAssign ni ol x):ss)) mid = let
+        nl = getNewLabel ol i
+        s = DecAssign ni nl x
+        ss' = relabel False (Seq ss) ol nl
+        ((Seq ss''),i') = aux (i+1) False ss' mid
+        in (Seq (s:ss''),i')
+    -- general case
+    aux i tl (Seq (s:ss)) mid = let
+        (s',i') = auxS i s mid
+        ((Seq ss'),i'') = aux i' tl (Seq ss) mid
+        in (Seq (s':ss'),i'')
+    
+    auxS :: Int -> Stmt -> ModuleId -> (Stmt,Int)
+    auxS i s@(NOP _) mid = (s,i)
+    auxS i (Block ni ss) mid = let 
+        (ss',i') = aux i False ss mid
+        in (Block ni ss',i')
+    auxS i s@(Stmt _ _) mid = (s,i)
+    auxS i (If ni x ss1 ss2) mid = let
+        (ss1',i') = aux i False ss1 mid
+        (ss2',i'') = aux i' False ss2 mid
+        in (If ni x ss1' ss2',i'')
+    auxS i (Fn ni fl fps fss) mid = let
+        (fss',i') = aux i False fss mid
+        in (Fn ni fl fps fss',i')
+    auxS i s@(DType _ _ _ _) mid = (s,i)
+    auxS i s@(TypeAlias _ _ _) mid = (s,i)
+    auxS i (While ni x ss) mid = let
+        (ss',i') = aux i False ss mid
+        in (While ni x ss',i')
+    auxS i (Case ni x es) mid = let
+        caseAux i [] = ([],i)
+        caseAux i ((px,ss):es) = let
+            (ss',i') = aux i False ss mid
+            (es',i'') = caseAux i' es
+            in ((px,ss'):es',i'')
+        (es',i') = caseAux i es
+        in (Case ni x es',i')
+    auxS i s@(Dec ni x) mid = (s,i)
+    auxS i s@(DecAssign ni label x) mid = (s,i)
+    auxS i s@(Assign ni x1 x2) mid = (s,i)
+    auxS i s@(Return ni x) mid = (s,i)
+
+    getNewLabel label i = "s" ++ show i ++ ":" ++ label
 
 -- moves all lambdas and fns to the top-level and 
 --  renames all references to these functions 
---
--- Additionally, relabels all local variables to allow proper scoping
 liftFns :: Seq -> ModuleId -> Seq
 liftFns ss mid = let 
     ((Seq ss'), fns, _) = aux 0 True ss [] mid
@@ -25,20 +91,6 @@ liftFns ss mid = let
     --     relabeled prog    gathered fns  curr id
         -> (Seq,             [Stmt],       Int)
     aux i tl (Seq []) fns mid = (Seq [], fns, i)
-    -- relabel everything after this to the new label
-    aux i False (Seq ((Dec ni (Var vni ol)):ss)) fns mid = let
-        nl = getNewLabel ol i
-        s = Dec ni (Var vni nl)
-        ss' = relabel False (Seq ss) ol nl
-        ((Seq ss''),fns',i') = aux (i+1) False ss' fns mid
-        in (Seq (s:ss''),fns',i')
-    -- also for DecAssign
-    aux i False (Seq ((DecAssign ni ol x):ss)) fns mid = let
-        nl = getNewLabel ol i
-        s = DecAssign ni nl x
-        ss' = relabel False (Seq ss) ol nl
-        ((Seq ss''),fns',i') = aux (i+1) False ss' fns mid
-        in (Seq (s:ss''),fns',i')
     aux i tl (Seq ((Fn ni fl fps fss):ss)) fns mid = let
         -- allows all of the functions to access each other through relabeling
         doRelabel :: [Stmt] -> Seq -> Int -> ([Stmt],Seq,Int)
@@ -108,7 +160,7 @@ liftFns ss mid = let
     auxS i s@(Assign ni x1 x2) fns mid = (s,fns,i)
     auxS i s@(Return ni x) fns mid = (s,fns,i)
 
-    getNewLabel label i = "c" ++ show i ++ ":" ++ label
+    getNewLabel label i = "fn" ++ show i ++ ":" ++ label
 
 -- simplifies `dec n, x :: t, y;` into 
 --  `dec n; dec x; x :: t; dec y;`
