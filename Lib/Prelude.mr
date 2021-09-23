@@ -1,5 +1,6 @@
 module excluding () {
     op ++   append;
+    op +++  lappend;
     op :    Cons;
     op .    compose;
 }
@@ -37,8 +38,20 @@ fn odd n -> n % 2 = 1;
 dec even <- not . odd
 fn add1 n -> n+1;
 fn sub1 n -> n-1;
-fn neg n -> -n;
+fn negate n -> -n;
+fn pos n -> n > 0;
+fn neg n -> n < 0;
+fn zero n -> n = 0;
 fn abs n -> if n > 0 then n else -n;
+
+fn ceil f -> floor f + 1;
+fn round f {
+    dec ff <- intToFloat $ floor f;
+    dec fc <- intToFloat $ ceil f;
+    dec dif1 <- f -. ff;
+    dec dif2 <- fc -. f;
+    return if dif1 >= dif2 then ceil f else floor f;
+}
 
 fn max n1 n2 -> if n1 >= n2 then n1 else n2;
 fn min n1 n2 -> if n1 <= n2 then n1 else n2;
@@ -113,6 +126,24 @@ fn append a1 a2 {
     }
 
     return ret;
+}
+
+-- appends an array of arrays into a single array
+fn appendAll as {
+    dec lret <- Null;
+    dec i <- length as - 1;
+    dec j;
+
+    While i /= -1 {
+        j <- length (as ! i) - 1;
+        While j /= -1 {
+            lret <- (as ! i ! j) : lret;
+            j -< 1;
+        }
+        i -< 1;
+    }
+
+    return listToArray lret;
 }
 
 --filter :: (a -> Bool) -> Array a -> Array a;
@@ -273,6 +304,180 @@ fn printLn v {putLn $ show v;}
 fn put s {printChar `vmap` s;}
 fn putLn s {printChar `vmap` s; printChar '\n';}
 
+fn showChar c -> "'" ++ [c] ++ "'";
+
+fn showInt n {
+    -- converts the raw number into its char form, 3 -> '3'
+    fn convert i -> chr $ i + 48;
+    
+    -- remember if was negative
+    dec sign <- neg n;
+    dec lret <- Null;
+    dec d <- 0;
+    n <- abs n;
+
+    If n = 0 {return "0";}
+
+    While n /= 0 {
+        d <- n % 10;
+        n /< 10;
+        lret <- convert d : lret;
+    }
+    
+    If sign {lret <- '-' : lret;}
+    return listToArray lret;
+}
+
+fn showString s -> appendAll ["\"", s,"\""];
+
+-- showArray :: (a -> String) -> Array a -> String;
+fn showArray f a {
+    If length a = 0 {return "[]";}
+
+    -- compute all of the elems of the array
+    dec as <- f `gmap` a;
+    -- `as2` is a list of strings that will eventually be merged together
+    --                             ", "             "[" "]"
+    dec as2 <- Array $ length as + (length as - 1) + 1 + 1;
+    as2 ! 0 <- "[";
+    as2 ! (length as2 - 1) <- "]";
+
+    dec i <- 1;
+    dec asi <- 0;
+    dec cont <- True;
+    While cont && i < length as2 - 1 {
+        If asi = length as - 1 {
+            as2 ! i <- as ! asi;
+            cont <- False;
+        } Else {
+            as2 ! i <- as ! asi;
+            as2 ! (i+1) <- ", ";
+
+            i +< 2;
+            asi +< 1;
+        }
+    }
+
+    -- merge into one string
+    return appendAll as2;
+}
+
+fn showtp2 f tp -> case tp {
+    (a,b) -> 
+        appendAll ["(", f a, ", ", f b, ")"]
+    ;
+};
+
+fn showtp3 f tp -> case tp {
+    (a,b,c) -> 
+        appendAll ["(", f a, ", ", f b, ", ", f c, ")"]
+    ;
+};
+
+fn showtp4 f tp -> case tp {
+    (a,b,c,d) -> 
+        appendAll ["(", f a, ", ", f b, ", ", f c, ", ", f d, ")"]
+    ;
+};
+
+fn showtp5 f tp -> case tp {
+    (a,b,c,d,e) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e
+        ,")"]
+    ;
+};
+fn showtp6 f tp -> case tp {
+    (a,b,c,d,e,f_) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_
+        ,")"]
+    ;
+};
+
+fn showtp7 f tp -> case tp {
+    (a,b,c,d,e,f_,g) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g
+        ,")"]
+    ;
+};
+
+fn showtp8 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h
+        ,")"]
+    ;
+};
+
+fn showtp9 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i
+        ,")"]
+    ;
+};
+
+fn showtp10 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i,j) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i, ", ", f j
+        ,")"]
+    ;
+};
+
+fn showtp11 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i,j,k) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k
+        ,")"]
+    ;
+};
+
+fn showtp12 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i,j,k,l) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l
+        ,")"]
+    ;
+};
+
+fn showtp13 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i,j,k,l,m) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l, ", ",
+        f m
+        ,")"]
+    ;
+};
+
+fn showtp14 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i,j,k,l,m,n) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l, ", ",
+        f m, ", ", f n
+        ,")"]
+    ;
+};
+
+fn showtp15 f tp -> case tp {
+    (a,b,c,d,e,f_,g,h,i,j,k,l,m,n,o) -> 
+        appendAll ["(",
+        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
+        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l, ", ",
+        f m, ", ", f n, ", ", f o
+        ,")"]
+    ;
+};
 
 -- Works, but is very literal.
 -- Chokes on trailing whitespace and negative sign.

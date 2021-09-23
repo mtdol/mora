@@ -328,6 +328,8 @@ preloadedLabels = [
     , ("length",    1)
     , ("ord",       1)
     , ("chr",       1)
+    , ("floor",     1)
+    , ("intToFloat", 1)
   ]
 
 preloadedLabelsSet = Set.fromList $ map fst preloadedLabels
@@ -801,6 +803,12 @@ interpPreloadedFn op vs mid m = case op of
     "chr" -> let
         [VInt i] = vs
         in (VChar $ chr $ fromIntegral i,[],m)
+    "floor" -> let
+        [VFloat f] = vs
+        in (VInt $ floor f,[],m)
+    "intToFloat" -> let
+        [VInt i] = vs
+        in (VFloat $ fromInteger i,[],m)
 
 interpVGetter :: Value -> ModuleId -> State -> (Value,[IO Value],State)
 interpVGetter (VGetter label i [v]) mid m = let
