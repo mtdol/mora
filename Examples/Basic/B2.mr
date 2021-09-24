@@ -17,9 +17,9 @@ fn f x y {
 fn main {
     dec z1, z2;
     z1 <- f 3 4;
-    @ z1;
+    printInt z1;
     z2 <- f 2 3 + z1;
-    @ z2;
+    printInt z2;
 
     return 0;
 }

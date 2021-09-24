@@ -38,6 +38,16 @@ fn odd n -> n % 2 = 1;
 dec even <- not . odd
 fn add1 n -> n+1;
 fn sub1 n -> n-1;
+fn add n1 n2 -> n1 + n2;
+fn fadd n1 n2 -> n1 +. n2;
+fn sub n1 n2 -> n1 - n2;
+fn fsub n1 n2 -> n1 -. n2;
+fn div n1 n2 -> n1 / n2;
+fn fdiv n1 n2 -> n1 /. n2;
+fn mul n1 n2 -> n1 * n2;
+fn fmul n1 n2 -> n1 *. n2;
+fn pow n1 n2 -> n1 ** n2;
+fn fpow n1 n2 -> n1 **. n2;
 fn negate n -> -n;
 fn pos n -> n > 0;
 fn neg n -> n < 0;
@@ -180,7 +190,19 @@ fn elem e a {
     return False;
 }
 
--- TODO: `lookup`
+-- lookup :: (a -> a -> Bool) -> a -> Array (a,b) -> Maybe b;
+fn lookup cmp key es {
+    dec i <- 0;
+
+    While i /= length es {
+        If key `cmp` (fst $ es ! i) {return Yes $ snd $ es ! i;}
+        i +< 1;
+    }
+
+    return No;
+}
+
+fn lookupEq key es -> lookup eq key es;
 
 --slice :: Array a -> (Int, Int) -> Array a
 fn slice a is {
@@ -287,36 +309,88 @@ fn toUpper s ->
     ) `gmap` s
 ;
 
+fn whitespace c -> or [c = ' ', c = '\t', c = '\n'];
+
+fn trim s {
+    dec i <- 0;
+    dec start <- 0;
+    dec stop <- length s - 1;
+    dec cont <- True;
+
+    While cont && i /= length s {
+        If not $ whitespace $ s ! i  {
+            cont <- False;
+            start <- i;
+        }
+        i +< 1;
+    }
+
+    If whitespace $ s ! start {return "";}
+
+    cont <- True;
+    i <- length s - 1;
+    While cont && i >= start {
+        If not $ whitespace $ s ! i {
+            cont <- False;
+            stop <- i;
+        }
+        i -< 1;
+    }
+
+    return s `slice` (start,stop+1);
+}
 
 
 --
 --- IO
 --
 
-fn retPrint v {printLn v; return v;}
-
---print :: a -> Void;
-fn print v {put $ show v;}
---printLn :: a -> Void;
-fn printLn v {putLn $ show v;}
-
 -- prints strings
-fn put s {printChar `vmap` s;}
-fn putLn s {printChar `vmap` s; printChar '\n';}
+fn put s {putChar `vmap` s;}
+fn putLn s {putChar `vmap` s; putChar '\n';}
+
+fn printInt i -> putLn $ showInt i;
+fn printChar c -> putLn $ showChar c;
+fn printFloat f -> putLn $ showFloat f;
+fn printString s -> putLn $ showString s;
+fn printBool b -> putLn $ showBool b;
+
+fn printArray f s -> putLn $ showArray f s;
+fn printIntArray s -> putLn $ showArray showInt s;
+fn printCharArray s -> putLn $ showArray showChar s;
+fn printBoolArray s -> putLn $ showArray showBool s;
+fn printFloatArray s -> putLn $ showArray showFloat s;
+
+fn printtp2 fs tp  -> putLn $ showtp2 fs tp;
+fn printtp3 fs tp  -> putLn $ showtp3 fs tp;
+fn printtp4 fs tp  -> putLn $ showtp4 fs tp;
+fn printtp5 fs tp  -> putLn $ showtp5 fs tp;
+fn printtp6 fs tp  -> putLn $ showtp6 fs tp;
+fn printtp7 fs tp  -> putLn $ showtp7 fs tp;
+fn printtp8 fs tp  -> putLn $ showtp8 fs tp;
+fn printtp9 fs tp  -> putLn $ showtp9 fs tp;
+fn printtp10 fs tp -> putLn $ showtp10 fs tp;
+fn printtp11 fs tp -> putLn $ showtp11 fs tp;
+fn printtp12 fs tp -> putLn $ showtp12 fs tp;
+fn printtp13 fs tp -> putLn $ showtp13 fs tp;
+fn printtp14 fs tp -> putLn $ showtp14 fs tp;
+fn printtp15 fs tp -> putLn $ showtp15 fs tp;
 
 fn showChar c -> "'" ++ [c] ++ "'";
+
+fn showBool b -> if b then "True" else "False";
 
 fn showInt n {
     -- converts the raw number into its char form, 3 -> '3'
     fn convert i -> chr $ i + 48;
     
+    If n = 0 {return "0";}
+
     -- remember if was negative
     dec sign <- neg n;
     dec lret <- Null;
     dec d <- 0;
     n <- abs n;
-
-    If n = 0 {return "0";}
 
     While n /= 0 {
         d <- n % 10;
@@ -336,22 +410,22 @@ fn showArray f a {
 
     -- compute all of the elems of the array
     dec as <- f `gmap` a;
-    -- `as2` is a list of strings that will eventually be merged together
+    -- `as'` is a list of strings that will eventually be merged together
     --                             ", "             "[" "]"
-    dec as2 <- Array $ length as + (length as - 1) + 1 + 1;
-    as2 ! 0 <- "[";
-    as2 ! (length as2 - 1) <- "]";
+    dec as' <- Array $ length as + (length as - 1) + 1 + 1;
+    as' ! 0 <- "[";
+    as' ! (length as' - 1) <- "]";
 
     dec i <- 1;
     dec asi <- 0;
     dec cont <- True;
-    While cont && i < length as2 - 1 {
+    While cont && i < length as' - 1 {
         If asi = length as - 1 {
-            as2 ! i <- as ! asi;
+            as' ! i <- as ! asi;
             cont <- False;
         } Else {
-            as2 ! i <- as ! asi;
-            as2 ! (i+1) <- ", ";
+            as' ! i <- as ! asi;
+            as' ! (i+1) <- ", ";
 
             i +< 2;
             asi +< 1;
@@ -359,138 +433,162 @@ fn showArray f a {
     }
 
     -- merge into one string
-    return appendAll as2;
+    return appendAll as';
 }
 
-fn showtp2 f tp -> case tp {
-    (a,b) -> 
-        appendAll ["(", f a, ", ", f b, ")"]
+fn showtp2 f tp -> case (tp,f) {
+    ((a1,a2),
+    (f1,f2)) -> 
+        appendAll ["(", f1 a1, ", ", f2 a2, ")"]
     ;
 };
 
-fn showtp3 f tp -> case tp {
-    (a,b,c) -> 
-        appendAll ["(", f a, ", ", f b, ", ", f c, ")"]
+fn showtp3 f tp -> case (tp,f) {
+    ((a1,a2,a3),
+    (f1,f2,f3))-> 
+        appendAll ["(", f1 a1, ", ", f2 a2, ", ", f3 a3, ")"]
     ;
 };
 
-fn showtp4 f tp -> case tp {
-    (a,b,c,d) -> 
-        appendAll ["(", f a, ", ", f b, ", ", f c, ", ", f d, ")"]
+fn showtp4 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4),
+    (f1,f2,f3,f4)) -> 
+        appendAll ["(", f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ")"]
     ;
 };
 
-fn showtp5 f tp -> case tp {
-    (a,b,c,d,e) -> 
+fn showtp5 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5),
+    (f1,f2,f3,f4,f5)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5
         ,")"]
     ;
 };
-fn showtp6 f tp -> case tp {
-    (a,b,c,d,e,f_) -> 
+fn showtp6 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6),
+    (f1,f2,f3,f4,f5,f6)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_
-        ,")"]
-    ;
-};
-
-fn showtp7 f tp -> case tp {
-    (a,b,c,d,e,f_,g) -> 
-        appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6
         ,")"]
     ;
 };
 
-fn showtp8 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h) -> 
+fn showtp7 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7),
+    (f1,f2,f3,f4,f5,f6,f7)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7
         ,")"]
     ;
 };
 
-fn showtp9 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i) -> 
+fn showtp8 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8),
+    (f1,f2,f3,f4,f5,f6,f7,f8)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8
         ,")"]
     ;
 };
 
-fn showtp10 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i,j) -> 
+fn showtp9 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i, ", ", f j
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9
         ,")"]
     ;
 };
 
-fn showtp11 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i,j,k) -> 
+fn showtp10 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9,a10),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9,f10)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9, ", ", f10 a10
         ,")"]
     ;
 };
 
-fn showtp12 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i,j,k,l) -> 
+fn showtp11 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9, ", ", f10 a10, ", ", f11 a11
         ,")"]
     ;
 };
 
-fn showtp13 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i,j,k,l,m) -> 
+fn showtp12 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l, ", ",
-        f m
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9, ", ", f10 a10, ", ", f11 a11, ", ",
+        f12 a12
         ,")"]
     ;
 };
 
-fn showtp14 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i,j,k,l,m,n) -> 
+fn showtp13 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l, ", ",
-        f m, ", ", f n
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9, ", ", f10 a10, ", ", f11 a11, ", ",
+        f12 a12, ", ", f13 a13
         ,")"]
     ;
 };
 
-fn showtp15 f tp -> case tp {
-    (a,b,c,d,e,f_,g,h,i,j,k,l,m,n,o) -> 
+fn showtp14 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14)) -> 
         appendAll ["(",
-        f a, ", ", f b, ", ", f c, ", ", f d, ", ", f e, ", ", f f_, ", ",
-        f g, ", ", f h, ", ", f i, ", ", f j, ", ", f k, ", ", f l, ", ",
-        f m, ", ", f n, ", ", f o
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9, ", ", f10 a10, ", ", f11 a11, ", ",
+        f12 a12, ", ", f13 a13, ", ", f14 a14
         ,")"]
     ;
 };
 
--- Works, but is very literal.
--- Chokes on trailing whitespace and negative sign.
+fn showtp15 f tp -> case (tp,f) {
+    ((a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15),
+    (f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13,f14,f15)) -> 
+        appendAll ["(",
+        f1 a1, ", ", f2 a2, ", ", f3 a3, ", ", f4 a4, ", ", f5 a5, ", ", f6 a6, ", ",
+        f7 a7, ", ", f8 a8, ", ", f9 a9, ", ", f10 a10, ", ", f11 a11, ", ",
+        f12 a12, ", ", f13 a13, ", ", f14 a14, ", ", f15 a15
+        ,")"]
+    ;
+};
+
 -- readInt :: String -> Maybe Int;
 fn readInt s {
-    dec i <- length s - 1;
-    dec j <- 0;
-    dec n <- 0;
-    dec c <- 0;
+    fn handleSign s {
+        dec s' <- trim s;
+        If length s' /= 0 && s' ! 0 = '-' {
+            return (trim $ drop 1 s', True);
+        }
+        return (s',False);
+    }
+
+    dec tp <- handleSign s;
+    dec s' <- fst tp;
+    dec sign <- snd tp;
+    dec i  <- length s' - 1;
+    dec j  <- 0;
+    dec n  <- 0;
+    dec c  <- 0;
 
     -- [48,57]
     While i /= -1 {
-        c <- ord $ s ! i;
+        c <- ord $ s' ! i;
         If c > 57 || c < 48 {
             return No;
         } Else {
@@ -502,6 +600,8 @@ fn readInt s {
         i -< 1;
         j +< 1;
     }
+
+    If sign {n <- negate n;}
 
     return Yes n;
 }
@@ -606,6 +706,14 @@ fn lelem e xs -> case xs {
     Null -> False;
     x:xs -> if x = e then True else lelem e xs;
 };
+
+-- llookup :: (a -> a -> Bool) -> a -> List (a,b) -> Maybe b;
+fn llookup cmp key xs -> case xs {
+    (x,v):xs -> if key `cmp` x then Yes v else llookup cmp key xs;
+    Null -> No;
+};
+
+fn llookupEq key xs -> llookup eq key xs;
 
 --lreverse :: List a -> List a;
 fn lreverse xs {
@@ -718,12 +826,14 @@ fn listToArray xs {
     return ret;
 }
 
--- list pretty print
-fn lpprint xs {
-    Case xs {
-        x:xs -> {print x; put " : "; lpprint xs;}
-        Null -> {put "Null";}
-    }
+-- Show a list
+fn showList f xs {
+    fn aux f xs -> case xs {
+        x:xs -> f x : " : " : aux f xs;
+        Null -> "Null" : Null;
+    };
+
+    return appendAll $ listToArray $ aux f xs;
 }
 
-fn lpprintLn xs {lpprint xs; putLn "";}
+fn printList f xs {putLn $ showList f xs;}

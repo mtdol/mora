@@ -321,8 +321,7 @@ makePreloadedFn name arity mid =
 --                  name   arity  
 preloadedLabels :: [(Label,Int)]
 preloadedLabels = [
-      ("printChar", 1)
-    , ("show",      1)
+      ("putChar", 1)
     , ("error",     1)
     , ("Array",     1)
     , ("length",    1)
@@ -773,13 +772,9 @@ interpCaseExprElems ((px,x):elems) v mid m ni = case interpP px v mid m of
 -- interprets the preloaded functions
 interpPreloadedFn :: String -> [Value] -> ModuleId -> State -> (Value,[IO Value],State)
 interpPreloadedFn op vs mid m = case op of
-    "printChar" -> let
+    "putChar" -> let
         [v@(VChar _)] = vs
         in (VVoid,[return $ v],m)
-    "show" -> let 
-        [v] = vs
-        (vptr,m') = showMapValue v m
-        in (vptr,[],m')
     "error" -> let
         [v] = vs
         (VArray a n) = getFromHeap v m

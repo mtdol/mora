@@ -31,7 +31,6 @@ preludeOps :: [ModuleStmt]
 preludeOps = [
       OpDec ":"     "Cons"
     , OpDec "++"    "append"
-    , OpDec "@"     "printLn" 
     , OpDec "!!"    "lindex"
     , OpDec "."     "compose"
     ]

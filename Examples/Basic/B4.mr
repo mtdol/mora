@@ -14,26 +14,26 @@ fn main {
     dec add1, vs;
     add1 <- \x -> x + 1;
     
-    @ 5 `sub` 3;
-    @ add1 6;
+    printInt $ 5 `sub` 3;
+    printInt $ add1 6;
 
     vs <- [1,2,3];
-    @ vs;
+    printArray showInt $ vs;
 
     -- map in place using lambda
     _map add1 vs;
-    @ vs;
+    printArray showInt $ vs;
     
     -- we do a little currying
     _map (sub 2) vs;
-    @ vs;
+    printArray showInt $ vs;
 
     -- directly pass in a lambda
     _map (\x {return sub x 3;}) vs;
-    @ vs;
+    printArray showInt $ vs;
 
     -- calls the nullary lambda, receives `sub 3`, applies 4
-    @ (\ {return sub 3;})() 4; -- prints "-1"
+    printInt $ (\ {return sub 3;})() 4; -- prints "-1"
 
     return 0;
 }

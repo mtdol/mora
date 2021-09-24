@@ -19,7 +19,7 @@ fn f n {
     }
     
     -- print out `n` cuz why not
-    @a;
+    printInt a;
     
     fn f2 n ->
         if n = 0 then "even" else f1 $ n-1

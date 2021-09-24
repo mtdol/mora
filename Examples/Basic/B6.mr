@@ -15,18 +15,18 @@ fn main {
         'c' -> 'd';
         'd' -> 'e';
     };
-    @c;
+    printChar $ c;
 
-    @ case 1 + 2 {
+    printInt $ case 1 + 2 {
         n@2 -> n - 2;
         n@3 -> n + 1;
     } + 1;
 
     Case 1:2:Null {
-        xs@x:y:Null -> {@ x-y; lprint xs; printChar '\n';}
+        xs@x:y:Null -> {printInt $ x-y; printList showInt xs;}
     }
 
-    @ case False {
+    printInt $ case False {
         True -> 1;
         False -> 0;
     };

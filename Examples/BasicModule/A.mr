@@ -8,7 +8,7 @@ module * {
 
 fn main {
     dec a <- b.b - C.getc();
-    printLn a; -- should print 2
+    printInt a; -- should print 2
 
     return 0;
 }

@@ -1,18 +1,18 @@
 dec a <- 3;
 
-{dec a <- a + 1; @ a;}
+{dec a <- a + 1; printInt $ a;}
 
-@ a;
+printInt $ a;
 
 fn main {
     dec x;
     x <- 7;
     
-    {dec x <- x + 1; @x;}
+    {dec x <- x + 1; printInt $ x;}
 
-    @ x;
+    printInt $ x;
 
-    @ a;
+    printInt $ a;
     
     -- program should have printed "4 3 8 7 3"
     return 0;

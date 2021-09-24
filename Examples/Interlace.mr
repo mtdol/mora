@@ -29,9 +29,9 @@ fn interlace a1 a2 {
 } 
 
 fn main {
-    @ interlace [1,2,3] [4,5,6]; -- [1,4,2,5,3,6]
-    @ interlace [1,2]   [4,5,6]; -- [1,4,2,5,6]
-    @ interlace [1,2,3] [4,5];   -- [1,4,2,5,3]
+    printArray showInt $ interlace [1,2,3] [4,5,6]; -- [1,4,2,5,3,6]
+    printArray showInt $ interlace [1,2]   [4,5,6]; -- [1,4,2,5,6]
+    printArray showInt $ interlace [1,2,3] [4,5];   -- [1,4,2,5,3]
 
     return 0;
 }

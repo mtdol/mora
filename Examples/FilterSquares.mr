@@ -21,7 +21,7 @@ fn main args {
     dec j <- 0;
     While j < n {
         dec t <- square i;
-        If odd t {j +< 1; @t;}
+        If odd t {j +< 1; printInt t;}
         i +< 1;
     }
 

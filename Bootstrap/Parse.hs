@@ -128,7 +128,7 @@ def =
            , Token.commentEnd       = "-}"
            , Token.commentLine      = "--"
            , Token.identStart       = letter <|> char '_'
-           , Token.identLetter      = alphaNum <|> char '_' <|> char '.'
+           , Token.identLetter      = alphaNum <|> char '_' <|> char '.' <|> char '\''
            , Token.reservedNames    = [ "If"
                                       , "Else"
                                       , "if"
