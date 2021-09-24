@@ -1,3 +1,8 @@
+{-
+Mora Prelude
+Matthew Dolinka 2021
+-}
+
 module excluding () {
     op ++   append;
     op +++  lappend;
@@ -66,14 +71,33 @@ fn round f {
 fn max n1 n2 -> if n1 >= n2 then n1 else n2;
 fn min n1 n2 -> if n1 <= n2 then n1 else n2;
 
+fn maxAll ns -> foldl' max ns;
+fn minAll ns -> foldl' min ns;
+
 fn eq v1 v2 -> v1 = v2;
 dec neq <- not `compose2` eq;
+
+fn arrayEq cmp x y {
+    dec i <- 0;
+    If length x /= length y {return False;}
+    While i /= length x {
+        If not $ (x ! i) `cmp` (y ! i) {return False;}
+        i +< 1;
+    }
+    return True;
+}
+
+dec arrayEqEq <- arrayEq eq;
+dec stringEq <- arrayEqEq;
 
 fn compose f1 f2 x -> f1 $ f2 x;
 fn compose2 f1 f2 x y -> f1 $ f2 x y;
 
 --inRange :: (Int,Int) -> Int;
 fn inRange r x -> x >= fst r && x < snd r;
+
+-- singleton :: a -> Array a;
+fn singleton x -> [x];
 
 -- in place map
 --map :: (a -> b) -> Array a -> Void;
@@ -240,6 +264,19 @@ fn zip xs ys {
     return ret;
 }
 
+fn zip3 xs ys zs {
+    dec l <- minAll [length xs, length ys, length zs];
+    dec ret <- Array l;
+    dec i <- 0;
+
+    While i /= l {
+        ret ! i <- (xs ! i, ys ! i, zs ! i);
+        i +< 1;
+    }
+
+    return ret;
+}
+
 fn foldr f acc xs {
     dec i <- length xs - 1;
     While i /= -1 {
@@ -252,6 +289,21 @@ fn foldr f acc xs {
 
 fn foldl f acc xs {
     dec i <- 0;
+    While i /= length xs {
+        acc <- f (xs ! i) acc;
+        i +< 1;
+    }
+
+    return acc;
+}
+
+-- starts with the first list elem
+fn foldl' f xs {
+    If length xs = 0 {error "foldl': Empty array.";}
+
+    dec i <- 1;
+    dec acc <- xs ! 0;
+
     While i /= length xs {
         acc <- f (xs ! i) acc;
         i +< 1;
@@ -293,11 +345,11 @@ fn or xs {
 fn all f xs -> and $ gmap f xs;
 fn any f xs -> or $ gmap f xs;
 
-dec sum <- foldl (\x y -> x+y) 0;
-dec product <- foldl (\x y -> x*y) 1;
+dec sum <- foldl add 0;
+dec product <- foldl mul 1;
 
 --
---- Strings
+-- Strings
 --
 
 --toUpper :: String -> String;
@@ -342,7 +394,7 @@ fn trim s {
 
 
 --
---- IO
+-- IO
 --
 
 -- prints strings
@@ -606,6 +658,31 @@ fn readInt s {
     return Yes n;
 }
 
+fn readChar s {
+    dec s' <- trim s;
+    If length s' /= 3 {return No;}
+    If s' ! 0 /= '\'' {return No;}
+    If s' ! 2 /= '\'' {return No;}
+    return Yes $ s' ! 1;
+}
+
+fn readString s {
+    dec s' <- trim s;
+    If length s' < 2 {return No;}
+    If length s' = 2 {return Yes "";}
+    If s' ! 0 /= '\"' {return No;}
+    If s' ! (length s' - 1) /= '\"' {return No;}
+    return Yes $ s' `slice` (1,length s' - 1);
+
+}
+
+fn readBool s {
+    dec s' <- trim s;
+    If "True" `stringEq` s' {return Yes True;}
+    If "False" `stringEq` s' {return Yes False;}
+    return No;
+}
+
 --
 --- Structures, Tuples
 --
@@ -762,6 +839,11 @@ fn lfoldl f acc xs -> case xs {
     x:xs -> lfoldl f (f x acc) xs;
 };
 
+fn lfoldl' f xs -> case xs {
+    Null -> error "lfoldl': Null.";
+    x:xs -> lfoldl f x xs;
+};
+
 {-
 -- might not be the most optimal
 fn lfoldr f acc xs -> case xs {
@@ -775,13 +857,18 @@ fn lfoldr f acc xs {
     return lfoldl f acc xs;
 }
 
-fn lzip xs ys ->
-    case (xs,ys) {
-        (Null,_) -> Null;
-        (_,Null) -> Null;
-        ((x:xs),(y:ys)) -> (x,y) : lzip xs ys;
-    }
-;
+fn lzip xs ys -> case (xs,ys) {
+    (Null,_) -> Null;
+    (_,Null) -> Null;
+    ((x:xs),(y:ys)) -> (x,y) : lzip xs ys;
+};
+
+fn lzip3 xs ys zs -> case (xs,ys,zs) {
+    (Null,_,_) -> Null;
+    (_,Null,_) -> Null;
+    (_,_,Null) -> Null;
+    ((x:xs),(y:ys),(z:zs)) -> (x,y,z) : lzip3 xs ys zs;
+};
 
 fn land xs -> case xs {
     Null -> True;
@@ -796,10 +883,18 @@ fn lor xs -> case xs {
 fn lall f xs -> land $ lgmap f xs;
 fn lany f xs -> lor $ lgmap f xs;
 
-dec lsum <- lfoldl (\x y -> x+y) 0;
-dec lproduct <- lfoldl (\x y -> x*y) 1;
+dec lsum <- lfoldl add 0;
+dec lproduct <- lfoldl mul 1;
 
 dec llength <- lfoldl (\_ acc -> acc+1) 0;
+
+fn leq cmp xs ys -> case (xs,ys) {
+    (Null, Null) -> True;
+    (x:xs,y:ys) -> x `cmp` y && leq cmp xs ys;
+    _ -> False;
+};
+
+dec leqEq <- leq eq; 
 
 fn arrayToList a {
     dec i <- length a - 1;
@@ -829,11 +924,16 @@ fn listToArray xs {
 -- Show a list
 fn showList f xs {
     fn aux f xs -> case xs {
-        x:xs -> f x : " : " : aux f xs;
-        Null -> "Null" : Null;
+        x:Null -> f x : "])" : Null;
+        x:xs -> f x : ", " : aux f xs;
+        Null -> "])" : Null;
     };
 
-    return appendAll $ listToArray $ aux f xs;
+    return appendAll $ listToArray $ "([" : aux f xs;
 }
 
 fn printList f xs {putLn $ showList f xs;}
+dec printIntList <- printList showInt;
+dec printFloatList <- printList showFloat;
+dec printCharList <- printList showChar;
+dec printBoolList <- printList showBool;

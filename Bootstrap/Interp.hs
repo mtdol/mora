@@ -629,6 +629,11 @@ interpX (PTuple _ xs) mid m = let
     (vptr,m'') = allocateValue v m'
     in (vptr,os,m'')
 
+interpX (PList ni (x:xs)) mid m = 
+    interpX (Ap ni (Ap ni (Var ni "Cons") x) (PList ni xs)) mid m
+interpX (PList ni []) mid m = 
+    interpX (Var ni "Null") mid m
+
 interpX (Lambda ni lps lb) mid m = (VFn Nothing mid lps [] (Right lb),[],m)
 
 interpX (Op2 "+" ni x1 x2) mid m =
@@ -896,6 +901,9 @@ interpP px v mid m = case px of
     PatArray ni pxs -> case ptrToArrayValues v m of
         Just vs -> interpPs pxs vs mid m
         _ -> Nothing
+    PatList ni pxs -> let
+        px' = convertListToPx ni pxs
+        in interpP px' v mid m
     PatString ni s -> case ptrToArrayValues v m of
         Just vs -> interpPs (map (PatChar ni) s) vs mid m
         _ -> Nothing
@@ -926,6 +934,9 @@ interpP px v mid m = case px of
             (VArray a n) -> Just $ arrayToList a n
             _ -> Nothing
         _ -> Nothing
+    convertListToPx ni [] = PatVar ni "Null"
+    convertListToPx ni (px:pxs) = 
+        PatAp ni (PatAp ni (PatVar ni "Cons") px) (convertListToPx ni pxs)
 
 interpPs :: [PatExpr] -> [Value] -> ModuleId -> State -> Maybe State
 interpPs [] [] mid m = Just m

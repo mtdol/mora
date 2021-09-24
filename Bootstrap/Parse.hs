@@ -62,6 +62,7 @@ data Expr =
     | PBool NodeInfo Bool
     | PArray NodeInfo [Expr]
     | PTuple NodeInfo [Expr]
+    | PList NodeInfo [Expr]
     | PVoid NodeInfo
     | Ap NodeInfo Expr Expr
     | ApNull NodeInfo Expr 
@@ -83,6 +84,7 @@ data PatExpr =
     | PatVoid NodeInfo
     | PatArray NodeInfo [PatExpr]
     | PatTuple NodeInfo [PatExpr]
+    | PatList NodeInfo [PatExpr]
     | PatAp NodeInfo PatExpr PatExpr
     -- ":" operator probably
     | PatOp2 String NodeInfo PatExpr PatExpr
@@ -418,7 +420,8 @@ patExpr = try asPattern
       <|> buildExpressionParser patOperators patTerm
 
 patTerm = 
-        try patTupleLiteral
+        try patListLiteral
+    <|> try patTupleLiteral
     <|> parens patExpr
     <|> patArrayLiteral
     <|> try (APNI stringLiteral >>= \s -> return $ PatString ni s)
@@ -451,6 +454,13 @@ patTupleLiteral = parens $ do
     reservedOp ","
     xs <- patExpr `sepBy1` (reservedOp ",")
     return $ PatTuple ni (x1:xs)
+
+patListLiteral = parens $ do
+    ni <- NI
+    reservedOp "["
+    xs <- patExpr `sepBy` (reservedOp ",")
+    reservedOp "]"
+    return $ PatList ni xs
 
 
 moduleData = do
@@ -773,6 +783,13 @@ arrayLiteral = do
     reservedOp "]"
     return $ PArray ni xs
 
+listLiteral = parens $ do
+    ni <- NI
+    reservedOp "["
+    xs <- expr `sepBy` (reservedOp ",")
+    reservedOp "]"
+    return $ PList ni xs
+
 tupleLiteral = parens $ do
     ni <- NI
     -- we must have at least one ","
@@ -784,7 +801,8 @@ tupleLiteral = parens $ do
 superTerm = term
 
 term = 
-    try tupleLiteral
+        try listLiteral
+    <|> try tupleLiteral
     <|> parens expr
     <|> ifExpr
     <|> try lamExpr

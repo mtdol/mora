@@ -55,9 +55,13 @@ expandX v@(PFloat _ _) ops mid = v
 expandX v@(PString _ _) ops mid = v
 expandX v@(PChar _ _) ops mid = v
 expandX v@(PBool _ _) ops mid = v
-expandX v@(PArray _ _) ops mid = v
-expandX v@(PTuple _ _) ops mid = v
 expandX v@(PVoid _) ops mid = v
+expandX (PArray ni xs) ops mid = 
+    PArray ni $ map (\x -> expandX x ops mid) xs
+expandX (PTuple ni xs) ops mid = 
+    PTuple ni $ map (\x -> expandX x ops mid) xs
+expandX (PList ni xs) ops mid = 
+    PList ni $ map (\x -> expandX x ops mid) xs
 expandX (Ap ni x1 x2) ops mid = 
     Ap ni (expandX x1 ops mid) (expandX x2 ops mid)
 expandX (ApNull ni x) ops mid = ApNull ni (expandX x ops mid)
@@ -95,6 +99,8 @@ expandP (PatArray ni pxs) ops mid =
     PatArray ni $ map (\px -> expandP px ops mid) pxs
 expandP (PatTuple ni pxs) ops mid = 
     PatTuple ni $ map (\px -> expandP px ops mid) pxs
+expandP (PatList ni pxs) ops mid = 
+    PatList ni $ map (\px -> expandP px ops mid) pxs
 expandP (PatAp ni px1 px2) ops mid = 
     PatAp ni (expandP px1 ops mid) (expandP px2 ops mid)
 expandP (AsPattern ni label px) ops mid = 

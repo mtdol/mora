@@ -268,6 +268,8 @@ relabelX cut (PArray ni xs) ol nl =
     PArray ni $ map (\x -> relabelX cut x ol nl) xs
 relabelX cut (PTuple ni xs) ol nl = 
     PTuple ni $ map (\x -> relabelX cut x ol nl) xs
+relabelX cut (PList ni xs) ol nl = 
+    PList ni $ map (\x -> relabelX cut x ol nl) xs
 relabelX cut (Ap ni x1 x2) ol nl = 
     Ap ni (relabelX cut x1 ol nl) (relabelX cut x2 ol nl)
 relabelX cut (ApNull ni x) ol nl = ApNull ni (relabelX cut x ol nl)
