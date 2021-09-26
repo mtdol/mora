@@ -1,9 +1,7 @@
-fn fact n ->
-    if n <= 1 then
-        1
-    else
-        n * fact (n-1) 
-;
+fn fact n -> cond {
+    n <= 1 -> 1;
+    otherwise -> n * fact (n-1);
+};
 
 fn main {
     dec i, m;

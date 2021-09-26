@@ -24,9 +24,11 @@ data Box a := Box ({unbox,setbox} :: a);
 
 type String := Array Char;
 
+dec otherwise <- True;
+
 -- id :: a -> a;
 fn id a -> a;
-fn const _ y -> y;
+fn const y _ -> y;
 fn flip f x y -> f y x;
 
 --not :: Bool -> Bool;

@@ -47,6 +47,7 @@ data Stmt =
     | TypeAlias NodeInfo Label Expr
     | While NodeInfo Expr Seq
     | Case NodeInfo Expr [CaseStmtElem]
+    | Cond NodeInfo [(Expr,Seq)]
     | Dec NodeInfo Expr
     | DecAssign NodeInfo Label Expr
     | Assign NodeInfo Expr Expr
@@ -70,6 +71,7 @@ data Expr =
     --                params   body
     | Lambda NodeInfo [Label] Seq
     | CaseX NodeInfo Expr [CaseExprElem]
+    | CondX NodeInfo [(Expr,Expr)]
     | Op1 Label NodeInfo Expr
     | Op2 Label NodeInfo Expr Expr
     deriving (Show, Eq, Ord)
@@ -146,6 +148,8 @@ def =
                                       , "False"
                                       , "Case"
                                       , "case"
+                                      , "Cond"
+                                      , "cond"
                                       , "Void"
                                       , "module"
                                       , "op"
@@ -535,6 +539,7 @@ statement =
     <|> ifStmt
     <|> whileStmt
     <|> caseStmt
+    <|> condStmt
     <|> try decAssign
     <|> decStmt
     <|> returnStmt
@@ -727,6 +732,18 @@ caseStmtElem = do
     b <- block
     return $ (px,b)
 
+condStmt = do
+    ni <- NI
+    reserved "Cond"
+    elems <- braces (many1 condStmtElem)
+    return $ Cond ni elems
+
+condStmtElem = do
+    x <- expr
+    reservedOp "->"
+    b <- block
+    return $ (x,b)
+
 baseStmt = do
     ni <- NI
     e <- expr
@@ -776,6 +793,19 @@ caseExprElem = do
     semi
     return $ (px,x)
 
+condExpr = do
+    ni <- NI
+    reserved "cond"
+    elems <- braces (many1 condExprElem)
+    return $ CondX ni elems
+
+condExprElem = do
+    x1 <- expr
+    reservedOp "->"
+    x2 <- expr
+    semi
+    return $ (x1,x2)
+
 arrayLiteral = do
     ni <- NI
     reservedOp "["
@@ -808,6 +838,7 @@ term =
     <|> try lamExpr
     <|> lamX
     <|> caseExpr
+    <|> condExpr
     <|> stringP
     <|> arrayLiteral
     <|> charP

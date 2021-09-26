@@ -77,6 +77,32 @@ fn main args {
         foldl' sub [4,2,1];
     assert eq 3 $ 
         lfoldl' sub $ ([4,2,1]);
+    
+    dec x1 <- 2;
+    assert eq 1 $ cond {
+        x1 = 3 -> x1 + 1;
+        otherwise -> x1 - 1;
+    };
+
+    dec x2 <- 3;
+    assert eq 4 $ cond {
+        x2 = 3 -> x2 + 1;
+        otherwise -> x2 - 1;
+    };
+
+    x1 <- 2;
+    Cond {
+        x1 = 3 -> {x1 +< 1;}
+        otherwise -> {x1 -< 1;}
+    };
+    assert eq 1 $ x1;
+
+    x2 <- 3;
+    Cond {
+        x2 = 3 -> {x2 +< 1;}
+        otherwise -> {x2 -< 1;}
+    };
+    assert eq 4 $ x2;
 
     return 0;
 }

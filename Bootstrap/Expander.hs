@@ -41,6 +41,13 @@ expandS (Case ni x pss) ops mid =
     aux ((px, ss):pes) ops mid = 
         (expandP px ops mid, expandSeq ss ops mid) : aux pes ops mid
 
+expandS (Cond ni es) ops mid = 
+    Cond ni (aux es ops mid)
+ where
+    aux [] ops mid = []
+    aux ((x, ss):es) ops mid = 
+        (expandX x ops mid, expandSeq ss ops mid) : aux es ops mid
+
 expandS (Dec ni x) ops mid = Dec ni $ expandX x ops mid
 expandS (DecAssign ni label x) ops mid = 
     DecAssign ni label $ expandX x ops mid
@@ -75,7 +82,13 @@ expandX (CaseX ni x1 pes) ops mid =
     aux [] ops mid = []
     aux ((px,x):pes) ops mid = 
         (expandP px ops mid, expandX x ops mid) : aux pes ops mid
---TODO: replace with actual node info
+expandX (CondX ni es) ops mid = 
+    CondX ni (aux es ops mid)
+ where
+    aux [] ops mid = []
+    aux ((x1,x2):es) ops mid = 
+        (expandX x1 ops mid, expandX x2 ops mid) : aux es ops mid
+
 -- here's where the magic happens
 expandX (Op1 label ni x1) ops mid | label `Map.member` ops =
     Ap ni (Var ni (ops Map.! label)) (expandX x1 ops mid)

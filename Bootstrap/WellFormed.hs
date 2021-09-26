@@ -141,6 +141,10 @@ checkLowLevelS f (Case ni x elems) = casef f elems
  where
     casef f [] = accept
     casef f ((_,ss):elems) = aux f ss >> casef f elems
+checkLowLevelS f (Cond ni elems) = condf f elems
+ where
+    condf f [] = accept
+    condf f ((_,ss):elems) = aux f ss >> condf f elems
 checkLowLevelS f (Dec ni _) = accept
 checkLowLevelS f (DecAssign ni _ _) = accept
 checkLowLevelS f (Assign ni _ _) = accept

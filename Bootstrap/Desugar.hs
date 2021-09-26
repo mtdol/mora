@@ -71,6 +71,14 @@ scope p mid = let
             in ((px,ss'):es',i'')
         (es',i') = caseAux i es
         in (Case ni x es',i')
+    auxS i (Cond ni es) mid = let
+        condAux i [] = ([],i)
+        condAux i ((x,ss):es) = let
+            (ss',i') = aux i False ss mid
+            (es',i'') = condAux i' es
+            in ((x,ss'):es',i'')
+        (es',i') = condAux i es
+        in (Cond ni es',i')
     auxS i s@(Dec ni x) mid = (s,i)
     auxS i s@(DecAssign ni label x) mid = (s,i)
     auxS i s@(Assign ni x1 x2) mid = (s,i)
@@ -155,6 +163,14 @@ liftFns ss mid = let
             in ((px,ss'):es',fns'',i'')
         (es',fns',i') = caseAux i es fns
         in (Case ni x es',fns',i')
+    auxS i (Cond ni es) fns mid = let
+        condAux i [] fns = ([],fns,i)
+        condAux i ((x,ss):es) fns = let
+            (ss',fns',i') = aux i False ss fns mid
+            (es',fns'',i'') = condAux i' es fns'
+            in ((x,ss'):es',fns'',i'')
+        (es',fns',i') = condAux i es fns
+        in (Cond ni es',fns',i')
     auxS i s@(Dec ni x) fns mid = (s,fns,i)
     auxS i s@(DecAssign ni label x) fns mid = (s,fns,i)
     auxS i s@(Assign ni x1 x2) fns mid = (s,fns,i)
@@ -195,6 +211,11 @@ simpleDecs (Seq ((While ni x ss1):ss)) = let
 simpleDecs (Seq ((Case ni x elems):ss)) = let 
     elems' = map (\(px, ss) -> (px, simpleDecs ss)) elems
     s' = Case ni x elems'
+    (Seq ss') = simpleDecs (Seq ss)
+    in Seq $ s' : ss'
+simpleDecs (Seq ((Cond ni elems):ss)) = let 
+    elems' = map (\(x, ss) -> (x, simpleDecs ss)) elems
+    s' = Cond ni elems'
     (Seq ss') = simpleDecs (Seq ss)
     in Seq $ s' : ss'
 simpleDecs (Seq (s:ss)) = let
@@ -239,6 +260,10 @@ relabelS cut (Case ni x elems) ol nl = let
     elems' = map (\(px, ss) -> (px, relabel cut ss ol nl)) elems
     x' = relabelX cut x ol nl
     in Case ni x' elems'
+relabelS cut (Cond ni elems) ol nl = let
+    elems' = map (\(x, ss) -> 
+            (relabelX cut x ol nl, relabel cut ss ol nl)) elems
+    in Cond ni elems'
 relabelS cut s@(Dec ni x) ol nl = s
 relabelS cut (DecAssign ni label x) ol nl = 
     (DecAssign ni label (relabelX cut x ol nl))
@@ -280,6 +305,10 @@ relabelX cut (CaseX ni x elems) ol nl = let
     elems' = map (\(px, x) -> (px, relabelX cut x ol nl)) elems
     x' = relabelX cut x ol nl
     in CaseX ni x' elems'
+relabelX cut (CondX ni elems) ol nl = let
+    elems' = map (\(x1, x2) -> 
+        (relabelX cut x1 ol nl, relabelX cut x2 ol nl)) elems
+    in CondX ni elems'
 relabelX cut (Op2 op ni x1 x2) ol nl = 
     Op2 op ni (relabelX cut x1 ol nl) (relabelX cut x2 ol nl)
 relabelX cut (Op1 op ni x) ol nl = 

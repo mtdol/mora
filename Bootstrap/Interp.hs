@@ -513,6 +513,16 @@ interpS (Case ni x elems) mid m =
         (v',os',m'') = interpCaseStmtElems elems v mid m' ni
     in (v',os++os',m'')
 
+interpS (Cond ni elems) mid m = let
+    aux [] = error $ makeErrMsg ni mid $ "Exhausted Cond cases."
+    aux ((x,ss):elems) = let
+        (v,os,m') = interpToBool x mid m
+        in if not v then aux elems else let
+            (v',os',m'') = interpSeq ss mid m'
+            in (v',os++os',m'')
+    in aux elems
+    
+
 interpS s mid m = 
     error $ "Interp: Could not match stmt:\n" ++ show s 
 
@@ -759,6 +769,14 @@ interpX (CaseX ni x elems) mid m =
         (v',os',m'') = interpCaseExprElems elems v mid m' ni
     in (v',os++os',m'')
 
+interpX (CondX ni elems) mid m = let
+    aux [] = error $ makeErrMsg ni mid $ "Exhausted cond cases."
+    aux ((x1,x2):elems) = let
+        (v,os,m') = interpToBool x1 mid m
+        in if not v then aux elems else let 
+            (v',os',m'') = interpX x2 mid m'
+            in (v',os++os',m'')
+    in aux elems
 
 interpX x mid m = 
     error $ "Interp: Could not match expr:\n" ++ show x

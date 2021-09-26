@@ -9,7 +9,7 @@ endif
 
 
 syn keyword basicKeywords if If then else Else For While fn op type data
-syn keyword basicKeywords return dec case Case of
+syn keyword basicKeywords return dec case Case of cond Cond
 
 syn keyword preProcKeywords module import op
 syn match mrPreProc "#.*$"
