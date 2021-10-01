@@ -79,6 +79,10 @@ dupDecs (Seq ((If ni _ ss1 ss2):ss)) m mid = do
     dupDecs ss1 emptyDefs mid
     dupDecs ss2 emptyDefs mid
     dupDecs (Seq ss) m mid
+dupDecs (Seq ((WhileSugar ni init update _ ss1):ss)) m mid = do 
+    dupDecs init emptyDefs mid
+    dupDecs ss1 emptyDefs mid
+    dupDecs (Seq ss) m mid
 dupDecs (Seq ((While ni _ ss1):ss)) m mid = do 
     dupDecs ss1 emptyDefs mid
     dupDecs (Seq ss) m mid
@@ -136,6 +140,10 @@ checkLowLevelS f (If ni x ss1 ss2) = aux f ss1 >> aux f ss2
 checkLowLevelS f (Fn ni flabel fps fss) = aux f fss
 checkLowLevelS f (DType ni _ _ _) = accept
 checkLowLevelS f (TypeAlias ni _ _) = accept
+checkLowLevelS f (WhileSugar ni init update x ss) = do
+    aux f init
+    aux f update
+    aux f ss
 checkLowLevelS f (While ni x ss) = aux f ss
 checkLowLevelS f (Case ni x elems) = casef f elems
  where

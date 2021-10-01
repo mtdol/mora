@@ -8,6 +8,7 @@ module excluding () {
     op +++  lappend;
     op :    Cons;
     op .    compose;
+    op ..   compose2;
 }
 
 data Maybe a := 
@@ -42,7 +43,7 @@ fn xor b1 b2 -> b1 /= b2;
 --
 
 fn odd n -> n % 2 = 1;
-dec even <- not . odd
+dec even <- not . odd;
 fn add1 n -> n+1;
 fn sub1 n -> n-1;
 fn add n1 n2 -> n1 + n2;
@@ -59,7 +60,7 @@ fn negate n -> -n;
 fn pos n -> n > 0;
 fn neg n -> n < 0;
 fn zero n -> n = 0;
-fn abs n -> if n > 0 then n else -n;
+fn abs n -> if pos n then n else -n;
 
 fn ceil f -> floor f + 1;
 fn round f {
@@ -73,30 +74,40 @@ fn round f {
 fn max n1 n2 -> if n1 >= n2 then n1 else n2;
 fn min n1 n2 -> if n1 <= n2 then n1 else n2;
 
-fn maxAll ns -> foldl' max ns;
-fn minAll ns -> foldl' min ns;
+dec maxAll <- foldl' max;
+dec minAll <- foldl' min;
 
 fn eq v1 v2 -> v1 = v2;
-dec neq <- not `compose2` eq;
+dec neq <- not .. eq;
 
 fn arrayEq cmp x y {
-    dec i <- 0;
     If length x /= length y {return False;}
+    
+    Init   {dec i <- 0;}
+    Update {i +< 1;}
     While i /= length x {
         If not $ (x ! i) `cmp` (y ! i) {return False;}
-        i +< 1;
     }
+    
     return True;
 }
 
 dec arrayEqEq <- arrayEq eq;
 dec stringEq <- arrayEqEq;
 
+-- compose :: (b -> c) -> (a -> b) -> a -> c;
 fn compose f1 f2 x -> f1 $ f2 x;
 fn compose2 f1 f2 x y -> f1 $ f2 x y;
 
---inRange :: (Int,Int) -> Int;
-fn inRange r x -> x >= fst r && x < snd r;
+-- repeated function composition
+-- iter :: (a -> a) -> Int -> (a -> a);
+fn iter f n -> cond {
+    n = 0 -> id;
+    otherwise -> f . iter f (n-1);
+}; 
+
+--between :: Int -> (Int,Int);
+fn between x r -> x >= fst r && x < snd r;
 
 -- singleton :: a -> Array a;
 fn singleton x -> [x];
@@ -104,12 +115,8 @@ fn singleton x -> [x];
 -- in place map
 --map :: (a -> b) -> Array a -> Void;
 fn map f a {
-    dec i;
-    i <- 0;
-
-    While i /= length a {
-        a ! i <- f (a ! i);
-        i +< 1;
+    For (dec i <- 0; i /= length a; i +< 1;) {
+        a ! i <- f $ a ! i;
     }
 }
 
@@ -117,15 +124,12 @@ fn map f a {
 -- "generative" map
 --map :: (a -> b) -> Array a -> Array b;
 fn gmap f a {
-    dec i, ret;
-    i <- 0;
-    ret <- Array $ length a;
+    dec ret <- Array $ length a;
 
-    While i /= length a {
+    For (dec i <- 0; i /= length a; i +< 1;) {
         ret ! i <- f (a ! i);
-        i +< 1;
     }
-
+    
     return ret;
 }
 
@@ -133,12 +137,8 @@ fn gmap f a {
 -- "void" map
 --vmap :: (a -> b) -> Array a -> Void;
 fn vmap f a {
-    dec i;
-    i <- 0;
-
-    While i /= length a {
+    For (dec i <- 0; i /= length a; i +< 1;) {
         f $ a ! i;
-        i +< 1;
     }
 }
 
@@ -147,18 +147,17 @@ fn setArray a i v {a ! i <- v;}
 
 --append :: Array a -> Array a -> Array a;
 fn append a1 a2 {
-    dec ret, i;
-    ret <- Array $ length a1 + length a2;
-    i <- 0;
-
+    dec ret <- Array $ length a1 + length a2;
+    dec i <- 0;
+    
+    Update {i +< 1;}
     While i /= length a1 {
         ret ! i <- a1 ! i;
-        i     +< 1;
     }
-
+    
+    Update {i +< 1;}
     While i /= length ret {
         ret ! i <- a2 ! (i - length a1);
-        i     +< 1;
     }
 
     return ret;
@@ -167,16 +166,11 @@ fn append a1 a2 {
 -- appends an array of arrays into a single array
 fn appendAll as {
     dec lret <- Null;
-    dec i <- length as - 1;
-    dec j;
-
-    While i /= -1 {
-        j <- length (as ! i) - 1;
-        While j /= -1 {
+    
+    For (dec i <- length as - 1; i /= -1; i -< 1;) {
+        For (dec j <- length (as ! i) - 1; j /= -1; j -< 1;) {
             lret <- (as ! i ! j) : lret;
-            j -< 1;
         }
-        i -< 1;
     }
 
     return listToArray lret;
@@ -189,28 +183,26 @@ fn filter f a {
     i       <- 0;
     reti    <- 0;
 
+    Update {i +< 1;}
     While i /= length a {
         If f $ a ! i {
             ret ! reti <- a ! i;
-            reti     +< 1;
+            reti +< 1;
         }
-        i +< 1;
     }
 
     -- shrink array
     i <- 0;
     ret2 <- Array reti;
-    While i /= reti {ret2 ! i <- ret ! i; i +< 1;}
+    Update {i +< 1;}
+    While i /= reti {ret2 ! i <- ret ! i;}
 
     return ret2;
 }
 
 fn elem e a {
-    dec i <- 0;
-
-    While i /= length a {
+    For (dec i <- 0; i /= length a; i +< 1;) {
         If a ! i = e {return True;}
-        i +< 1;
     }
 
     return False;
@@ -218,17 +210,14 @@ fn elem e a {
 
 -- lookup :: (a -> a -> Bool) -> a -> Array (a,b) -> Maybe b;
 fn lookup cmp key es {
-    dec i <- 0;
-
-    While i /= length es {
+    For (dec i <- 0; i /= length es; i +< 1;) {
         If key `cmp` (fst $ es ! i) {return Yes $ snd $ es ! i;}
-        i +< 1;
     }
 
     return No;
 }
 
-fn lookupEq key es -> lookup eq key es;
+dec lookupEq <- lookup eq;
 
 --slice :: Array a -> (Int, Int) -> Array a
 fn slice a is {
@@ -239,61 +228,55 @@ fn slice a is {
 
     If i1 > i2 || i2 - i1 > length a {
         error $ "Invalid range for slice: [" 
-            ++ show i1 ++ " " ++ show i2 ++ ")";
+            ++ showInt i1 ++ " " ++ showInt i2 ++ ")";
     }
     ret <- Array $ i2 - i1;
     
+    Update {reti +< 1; i1 +< 1;}
     While i1 /= i2 {
         ret ! reti <- a ! i1;
-        reti  +< 1;
-        i1 +< 1;
     }
 
     return ret;
 }
 
--- zip :: Array a -> Array b -> Array (a,b)
-fn zip xs ys {
+-- zipWith :: (a -> b -> c) -> Array a -> Array b -> Array c;
+fn zipWith f xs ys {
     dec l <- min (length xs) (length ys);
     dec ret <- Array l;
-    dec i <- 0;
-
-    While i /= l {
-        ret ! i <- (xs ! i, ys ! i);
-        i +< 1;
+    
+    For (dec i <- 0; i /= l; i +< 1;) {
+        ret ! i <- f (xs ! i) (ys ! i);
     }
 
     return ret;
 }
 
-fn zip3 xs ys zs {
+fn zipWith3 f xs ys zs {
     dec l <- minAll [length xs, length ys, length zs];
     dec ret <- Array l;
-    dec i <- 0;
 
-    While i /= l {
-        ret ! i <- (xs ! i, ys ! i, zs ! i);
-        i +< 1;
+    For (dec i <- 0; i /= l; i +< 1;) {
+        ret ! i <- f (xs ! i) (ys ! i) (zs ! i);
     }
 
     return ret;
 }
 
+dec zip  <- zipWith tp2;
+dec zip3 <- zipWith3 tp3;
+
 fn foldr f acc xs {
-    dec i <- length xs - 1;
-    While i /= -1 {
+    For (dec i <- length xs - 1; i /= -1; i -< 1;) {
         acc <- f (xs ! i) acc;
-        i -< 1;
     }
 
     return acc;
 }
 
 fn foldl f acc xs {
-    dec i <- 0;
-    While i /= length xs {
+    For (dec i <- 0; i /= length xs; i +< 1;) {
         acc <- f (xs ! i) acc;
-        i +< 1;
     }
 
     return acc;
@@ -303,12 +286,9 @@ fn foldl f acc xs {
 fn foldl' f xs {
     If length xs = 0 {error "foldl': Empty array.";}
 
-    dec i <- 1;
     dec acc <- xs ! 0;
-
-    While i /= length xs {
+    For (dec i <- 1; i /= length xs; i +< 1;) {
         acc <- f (xs ! i) acc;
-        i +< 1;
     }
 
     return acc;
@@ -316,36 +296,34 @@ fn foldl' f xs {
 
 fn take n xs {
     n <- min (max n 0) (length xs);
-    return slice xs (0,n);
+    return xs `slice` (0,n);
 }
 
 fn drop n xs {
     n <- max 0 $ min n $ length xs;
-    return slice xs (n,length xs);
+    return xs `slice` (n,length xs);
 }
 
 -- and :: Array Bool -> Bool
 fn and xs {
-    dec i <- 0;
-    While i /= length xs {
+    For (dec i <- 0; i /= length xs; i +< 1;) {
         If not $ xs ! i {return False;}
-        i +< 1;
     }
+
     return True;
 }
 
 fn or xs {
-    dec i <- 0;
-    While i /= length xs {
+    For (dec i <- 0; i /= length xs; i +< 1;) {
         If xs ! i {return True;}
-        i +< 1;
     }
+
     return False;
 }
 
 -- all :: (a -> Bool) -> Array a -> Bool
-fn all f xs -> and $ gmap f xs;
-fn any f xs -> or $ gmap f xs;
+dec all <- and .. gmap;
+dec any <- or .. gmap;
 
 dec sum <- foldl add 0;
 dec product <- foldl mul 1;
@@ -357,7 +335,7 @@ dec product <- foldl mul 1;
 --toUpper :: String -> String;
 fn toUpper s ->
     \c -> (
-        if inRange (97,122) (ord c) then
+        if ord c `between` (97,122) then
             chr $ ord c - 32
         else c
     ) `gmap` s
@@ -366,29 +344,27 @@ fn toUpper s ->
 fn whitespace c -> or [c = ' ', c = '\t', c = '\n'];
 
 fn trim s {
-    dec i <- 0;
     dec start <- 0;
     dec stop <- length s - 1;
-    dec cont <- True;
-
+    
+    Init {dec cont <- True; dec i <- 0;}
+    Update {i +< 1;}
     While cont && i /= length s {
         If not $ whitespace $ s ! i  {
             cont <- False;
             start <- i;
         }
-        i +< 1;
     }
 
     If whitespace $ s ! start {return "";}
-
-    cont <- True;
-    i <- length s - 1;
+    
+    Init {dec cont <- True; dec i <- length s - 1;}
+    Update {i -< 1;}
     While cont && i >= start {
         If not $ whitespace $ s ! i {
             cont <- False;
             stop <- i;
         }
-        i -< 1;
     }
 
     return s `slice` (start,stop+1);
@@ -403,32 +379,32 @@ fn trim s {
 fn put s {putChar `vmap` s;}
 fn putLn s {putChar `vmap` s; putChar '\n';}
 
-fn printInt i -> putLn $ showInt i;
-fn printChar c -> putLn $ showChar c;
-fn printFloat f -> putLn $ showFloat f;
-fn printString s -> putLn $ showString s;
-fn printBool b -> putLn $ showBool b;
+dec printInt <- putLn . showInt;
+dec printChar <- putLn . showChar;
+dec printFloat <- putLn . showFloat;
+dec printString <- putLn . showString;
+dec printBool <- putLn . showBool;
 
-fn printArray f s -> putLn $ showArray f s;
-fn printIntArray s -> putLn $ showArray showInt s;
-fn printCharArray s -> putLn $ showArray showChar s;
-fn printBoolArray s -> putLn $ showArray showBool s;
-fn printFloatArray s -> putLn $ showArray showFloat s;
+dec printArray <- putLn .. showArray;
+dec printIntArray <- putLn . showArray showInt;
+dec printCharArray <- putLn . showArray showChar;
+dec printBoolArray <- putLn . showArray showBool;
+dec printFloatArray <- putLn . showArray showFloat;
 
-fn printtp2 fs tp  -> putLn $ showtp2 fs tp;
-fn printtp3 fs tp  -> putLn $ showtp3 fs tp;
-fn printtp4 fs tp  -> putLn $ showtp4 fs tp;
-fn printtp5 fs tp  -> putLn $ showtp5 fs tp;
-fn printtp6 fs tp  -> putLn $ showtp6 fs tp;
-fn printtp7 fs tp  -> putLn $ showtp7 fs tp;
-fn printtp8 fs tp  -> putLn $ showtp8 fs tp;
-fn printtp9 fs tp  -> putLn $ showtp9 fs tp;
-fn printtp10 fs tp -> putLn $ showtp10 fs tp;
-fn printtp11 fs tp -> putLn $ showtp11 fs tp;
-fn printtp12 fs tp -> putLn $ showtp12 fs tp;
-fn printtp13 fs tp -> putLn $ showtp13 fs tp;
-fn printtp14 fs tp -> putLn $ showtp14 fs tp;
-fn printtp15 fs tp -> putLn $ showtp15 fs tp;
+dec printtp2  <- putLn .. showtp2;
+dec printtp3  <- putLn .. showtp3;
+dec printtp4  <- putLn .. showtp4;
+dec printtp5  <- putLn .. showtp5;
+dec printtp6  <- putLn .. showtp6;
+dec printtp7  <- putLn .. showtp7;
+dec printtp8  <- putLn .. showtp8;
+dec printtp9  <- putLn .. showtp9;
+dec printtp10 <- putLn .. showtp10;
+dec printtp11 <- putLn .. showtp11;
+dec printtp12 <- putLn .. showtp12;
+dec printtp13 <- putLn .. showtp13;
+dec printtp14 <- putLn .. showtp14;
+dec printtp15 <- putLn .. showtp15;
 
 fn showChar c -> "'" ++ [c] ++ "'";
 
@@ -662,20 +638,22 @@ fn readInt s {
 
 fn readChar s {
     dec s' <- trim s;
-    If length s' /= 3 {return No;}
-    If s' ! 0 /= '\'' {return No;}
-    If s' ! 2 /= '\'' {return No;}
-    return Yes $ s' ! 1;
+    Cond {
+        length s' /= 3 -> {return No;}
+        s' ! 0 /= '\'' -> {return No;}
+        s' ! 2 /= '\'' -> {return No;}
+        otherwise -> {return Yes $ s' ! 1;}
+    }
 }
 
 fn readString s {
     dec s' <- trim s;
-    If length s' < 2 {return No;}
-    If length s' = 2 {return Yes "";}
-    If s' ! 0 /= '\"' {return No;}
-    If s' ! (length s' - 1) /= '\"' {return No;}
-    return Yes $ s' `slice` (1,length s' - 1);
-
+    Cond {
+        length s' < 2 -> {return No;}
+        s' ! 0 /= '\"' -> {return No;}
+        s' ! (length s' - 1) /= '\"' -> {return No;}
+        otherwise -> {return Yes $ s' `slice` (1,length s' - 1);}
+    }
 }
 
 fn readBool s {
@@ -696,6 +674,36 @@ fn fst tp -> case tp {
 fn snd tp -> case tp {
     (_,y) -> y;
 };
+
+-- tp2 :: a -> b -> (a,b);
+fn tp2 a1 a2 -> 
+    (a1,a2);
+fn tp3 a1 a2 a3 -> 
+    (a1,a2,a3);
+fn tp4 a1 a2 a3 a4 -> 
+    (a1,a2,a3,a4);
+fn tp5 a1 a2 a3 a4 a5 -> 
+    (a1,a2,a3,a4,a5);
+fn tp6 a1 a2 a3 a4 a5 a6 -> 
+    (a1,a2,a3,a4,a5,a6);
+fn tp7 a1 a2 a3 a4 a5 a6 a7 -> 
+    (a1,a2,a3,a4,a5,a6,a7);
+fn tp8 a1 a2 a3 a4 a5 a6 a7 a8 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8);
+fn tp9 a1 a2 a3 a4 a5 a6 a7 a8 a9 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9);
+fn tp10 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9,a10);
+fn tp11 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11);
+fn tp12 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12);
+fn tp13 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13);
+fn tp14 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14);
+fn tp15 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 -> 
+    (a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15);
 
 -- uncurry :: (a -> b -> c) -> (a, b) -> c;
 fn uncurry f xy ->
@@ -721,7 +729,7 @@ data List a :=
 fn null v -> v = Null;
 
 --lsingleton :: a -> List a;
-fn lsingleton x -> Cons x Null;
+fn lsingleton x -> ([x]);
 
 fn head v ->
     if null v then 
@@ -792,7 +800,7 @@ fn llookup cmp key xs -> case xs {
     Null -> No;
 };
 
-fn llookupEq key xs -> llookup eq key xs;
+dec llookupEq <- llookup eq;
 
 --lreverse :: List a -> List a;
 fn lreverse xs {
@@ -859,18 +867,21 @@ fn lfoldr f acc xs {
     return lfoldl f acc xs;
 }
 
-fn lzip xs ys -> case (xs,ys) {
+fn lzipWith f xs ys -> case (xs,ys) {
     (Null,_) -> Null;
     (_,Null) -> Null;
-    ((x:xs),(y:ys)) -> (x,y) : lzip xs ys;
+    ((x:xs),(y:ys)) -> f x y : lzipWith f xs ys;
 };
 
-fn lzip3 xs ys zs -> case (xs,ys,zs) {
+fn lzipWith3 xs ys zs -> case (xs,ys,zs) {
     (Null,_,_) -> Null;
     (_,Null,_) -> Null;
     (_,_,Null) -> Null;
-    ((x:xs),(y:ys),(z:zs)) -> (x,y,z) : lzip3 xs ys zs;
+    ((x:xs),(y:ys),(z:zs)) -> f x y z : lzipWith3 xs ys zs;
 };
+
+dec lzip  <- lzipWith tp2;
+dec lzip3 <- lzipWith3 tp3;
 
 fn land xs -> case xs {
     Null -> True;
@@ -882,8 +893,8 @@ fn lor xs -> case xs {
     x:xs -> x || land xs;
 };
 
-fn lall f xs -> land $ lgmap f xs;
-fn lany f xs -> lor $ lgmap f xs;
+dec lall <- land .. lgmap;
+dec lany <- lor .. lgmap;
 
 dec lsum <- lfoldl add 0;
 dec lproduct <- lfoldl mul 1;
@@ -934,8 +945,8 @@ fn showList f xs {
     return appendAll $ listToArray $ "([" : aux f xs;
 }
 
-fn printList f xs {putLn $ showList f xs;}
-dec printIntList <- printList showInt;
+dec printList      <- putLn .. showList;
+dec printIntList   <- printList showInt;
 dec printFloatList <- printList showFloat;
-dec printCharList <- printList showChar;
-dec printBoolList <- printList showBool;
+dec printCharList  <- printList showChar;
+dec printBoolList  <- printList showBool;

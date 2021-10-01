@@ -45,7 +45,10 @@ data Stmt =
     --
     --
     | TypeAlias NodeInfo Label Expr
-    | While NodeInfo Expr Seq
+    --               guard  body
+    | While NodeInfo Expr   Seq
+    --                    init  update  guard  body
+    | WhileSugar NodeInfo Seq   Seq     Expr   Seq
     | Case NodeInfo Expr [CaseStmtElem]
     | Cond NodeInfo [(Expr,Seq)]
     | Dec NodeInfo Expr
@@ -143,6 +146,9 @@ def =
                                       , "data"
                                       , "type"
                                       , "While"
+                                      , "Init"
+                                      , "Update"
+                                      , "For"
                                       , "return"
                                       , "True"
                                       , "False"
@@ -537,6 +543,7 @@ stmtSeq = do
 statement = 
         blockStmt
     <|> ifStmt
+    <|> forStmt
     <|> whileStmt
     <|> caseStmt
     <|> condStmt
@@ -548,6 +555,7 @@ statement =
     <|> typeStmt
     <|> dataStmt
     <|> try assignStmt
+    <|> try whileSugarStmt
     <|> baseStmt
     <|> (APNI semi >> (return $ NOP ni))
 
@@ -571,6 +579,7 @@ decAssign = do
         reservedOp "<-"
         x <- expr
         return $ DecAssign ni label x
+    semi
     return s
 
 returnStmt = do
@@ -638,6 +647,7 @@ fnStmt = do
     params <- many identifier
     b <- block
     return $ Fn ni n params b
+ <?> "fn"
 
 fnX = do
     ni <- NI
@@ -649,6 +659,7 @@ fnX = do
     x <- expr
     semi
     return $ Fn ni n params (Seq [Return xni x])
+ <?> "fnX"
 
 typeStmt = do
     ni <- NI
@@ -688,13 +699,36 @@ dataStmtRHSElem = do
         ) 
     return $ (label, elems)
  
-
 whileStmt = do
     ni <- NI
     reserved "While"
-    e       <- expr
-    b       <- block
-    return $ While ni e b
+    guard   <- expr
+    body    <- block
+    return $ While ni guard body
+
+whileSugarStmt = do
+    ni <- NI
+    init <- option (Seq []) (reserved "Init" >> block)
+    update <- option (Seq []) (reserved "Update" >> block)
+    reserved "While"
+    guard <- expr
+    body <- block
+    return $ WhileSugar ni init update guard body
+
+forStmt = do
+    ni <- NI
+    reserved "For"
+    (init,guard,update) <- forElems
+    body <- block
+    return $ WhileSugar ni (Seq [init]) (Seq [update]) guard body
+ <?> "For"
+
+forElems = parens $ do
+   init <- try decAssign <|> try assignStmt <|> baseStmt
+   guard <- expr
+   semi
+   update <- try assignStmt <|> baseStmt
+   return $ (init,guard,update)
 
 ifStmt = try ifStmt1 <|> ifStmt2
 

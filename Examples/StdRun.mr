@@ -13,7 +13,7 @@ fn main args {
     
     dec t;
     Case v {
-        Yes s -> {t <- "Yes args: " ++ show s;}
+        Yes s -> {t <- "Yes args: " ++ s;}
         No -> {t <- "No args";}
     }
     putLn t; t <- "";

@@ -492,8 +492,8 @@ interpS (If ni x ss1 ss2) mid m =
         else 
             let (v,os',(c'',g'',h'')) = interpSeq ss2 mid m'
             in (v,os++os',(c'',g'',h''))
-interpS (While ni x ss) mid m = 
-    let (b,os,m'@(c',_,_)) = interpToBool x mid m 
+interpS s@(While ni x ss) mid m = let
+    (b,os,m') = interpToBool x mid m 
     in
         if not b then
             -- guard failed so stop
@@ -501,10 +501,10 @@ interpS (While ni x ss) mid m =
         else
             case interpSeq ss mid m' of
                 -- return value, so stop
-                (Just v,os',(c'',g'',h'')) -> (Just v,os++os',(c'',g'',h''))
+                (Just v,os',m'') -> (Just v,os++os',m'')
                 -- no return value, keep going
-                (Nothing,os',(c'',g'',h'')) ->
-                    let (v,os'',m''') = interpS (While ni x ss) mid (c'',g'',h'') in
+                (Nothing,os',m'') ->
+                    let (v,os'',m''') = interpS s mid m'' in
                     (v,os++os'++os'',m''')
 
 -- case statement

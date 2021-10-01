@@ -5,11 +5,58 @@ import Error
 import Utilities (gatherFns)
 
 desugar :: Program -> ModuleId -> Program
-desugar p mid = let
-    p'   = simpleDecs p 
-    p''  = scope p' mid
-    p''' = liftFns p'' mid
-    in p'''
+desugar p mid =
+     (flip liftFns mid . flip scope mid . simpleDecs . expand) p
+
+-- expands sugar forms
+expand :: Program -> Program
+expand p = expandSeq p
+
+expandSeq :: Seq -> Seq
+expandSeq (Seq []) = Seq []
+expandSeq (Seq (s:ss)) = let
+    s' = expandS s
+    (Seq ss') = expandSeq (Seq ss)
+    in Seq (s':ss')
+
+expandS :: Stmt -> Stmt
+-- expands 
+--  
+--  Init {1...}
+--  Update {2...}
+--  While guard {3...}
+--
+--  to
+--
+--  {
+--  1...
+--  While guard {3... 2...}
+--  }
+--
+expandS (WhileSugar ni init update guard body) = let
+    (Seq init') = expandSeq init
+    (Seq update') = expandSeq update
+    (Seq body') = expandSeq body
+    s' = While ni guard $ Seq (body' ++ update')
+    in Block ni $ Seq $ init' ++ (s' : [])
+expandS (Block ni ss) = 
+    Block ni $ expandSeq ss
+expandS (If ni x ss1 ss2) = 
+    If ni x (expandSeq ss1) (expandSeq ss2)
+expandS (Fn ni fl fps fb) = 
+    Fn ni fl fps (expandSeq fb)
+expandS (While ni x ss) = 
+    While ni x (expandSeq ss)
+expandS (Case ni x elems) = let
+    aux [] = []
+    aux ((px,ss):elems) = (px,expandSeq ss) : aux elems
+    in Case ni x $ aux elems
+expandS (Cond ni elems) = let
+    aux [] = []
+    aux ((x,ss):elems) = (x,expandSeq ss) : aux elems
+    in Cond ni $ aux elems
+
+expandS s = s
 
 -- relabels local variables such that scoped and shadowed variables have
 --  unique names

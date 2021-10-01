@@ -31,6 +31,9 @@ expandS (Fn ni fl fps fss) ops mid =
     Fn ni fl fps $ expandSeq fss ops mid
 expandS dt@(DType _ _ _ _) ops mid = dt
 expandS ta@(TypeAlias _ _ _) ops mid = ta
+expandS (WhileSugar ni init update x ss) ops mid = 
+    WhileSugar ni (expandSeq init ops mid) (expandSeq update ops mid)
+    (expandX x ops mid) (expandSeq ss ops mid)
 expandS (While ni x ss) ops mid = 
     While ni (expandX x ops mid) (expandSeq ss ops mid)
 
